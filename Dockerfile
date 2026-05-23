@@ -28,6 +28,13 @@ ENV GOEXPERIMENT=greenteagc
 
 WORKDIR /build
 
+# When the default proxy (proxy.golang.org) fails with EOF on your network, Go tries the next URL.
+# Override at build time e.g. GOPROXY=https://goproxy.cn,direct GOSUMDB=sum.golang.google.cn
+ARG GOPROXY=https://goproxy.io,https://proxy.golang.org,direct
+ENV GOPROXY=${GOPROXY}
+ARG GOSUMDB=sum.golang.org
+ENV GOSUMDB=${GOSUMDB}
+
 ADD go.mod go.sum ./
 RUN go mod download
 

@@ -16,7 +16,7 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT"
 
-IMAGE_TAG="${IMAGE_TAG:-new-api:local}"
+IMAGE_TAG="${IMAGE_TAG:-new-api:latest}"
 OUTPUT_TAR="${1:-${ROOT}/new-api-local-docker.tar}"
 
 echo "==> Building ${IMAGE_TAG} from ${ROOT}/Dockerfile (can take several minutes)"

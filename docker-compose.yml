@@ -1,35 +1,49 @@
 # New-API Docker Compose Configuration
 #
-# Local checkout (bundles YOUR current frontend + Go binary — recommended):
-#   docker compose up -d --build
-#   First build can take several minutes (bun + rsbuild + go).
+# This file builds the **new-api** app from source next to this file (your current dev tree).
+#   docker compose up -d --build --force-recreate
 #   http://localhost:3000
 #
-# Use existing image without rebuilding:
-#   docker compose up -d
+# If you intentionally want a pre-published image instead of a local build,
+# remove the `build:` section from `new-api` and set `image: calciumion/new-api:latest` (or your registry).
 #
-# Start from a local image tar (e.g. new-api.tar):
-#   docker load -i new-api.tar
-#   docker images   # note REPOSITORY:TAG; if not new-api:local, run:
-#   docker tag <that-repo:tag> new-api:local
-#   docker compose -f docker-compose.yml -f docker-compose.from-tar.yml up -d
+# --- Docker Hub shows EOF (pull mysql/redis / build bases) ---
+# Docker Desktop → Settings → Docker Engine → add:
+#   "registry-mirrors": ["https://docker.m.daocloud.io"]
+# Or one-shot (example mirror; use your own if different):
+#   export MYSQL_IMAGE=docker.m.daocloud.io/library/mysql:8.0.34
+#   export REDIS_IMAGE=docker.m.daocloud.io/library/redis:latest
+#   docker compose pull mysql redis && docker compose build && docker compose up -d
+# Or: docker logout   # sometimes fixes auth.docker.io EOF
 #
-# This stack defaults to MySQL. To use PostgreSQL instead:
-#   1. Swap SQL_DSN: use postgresql://... and comment the MySQL DSN
-#   2. In depends_on, use postgres instead of mysql
-#   3. Comment the mysql service; uncomment postgres
-#   4. Use pg_data volume; comment mysql_data
+# --- mysql + new-api keep restarting ---
+# 1) See why:
+#      docker logs --tail 80 mysql
+#      docker logs --tail 80 new-api
+# 2) Downgrade MySQL image (e.g. 8.2 → 8.0.34): MySQL cannot open a data dir created by a newer server.
+#      You must remove the volume once (all DB data in that volume is lost):
+#      docker compose down
+#      docker volume rm <project>_mysql_data   # docker volume ls
+#      docker compose up -d
+#    Or if log shows "built by version 80XXX" older/newer mismatch, same: align image to data or wipe volume.
+# 3) new-api log shows dial tcp / connection refused:
+#      Wait until mysql is healthy; fix SQL_DSN password to match MYSQL_ROOT_PASSWORD.
+#
+# PostgreSQL instead: add postgres service + pg_data volume, postgresql:// SQL_DSN,
+#   and depends_on postgres instead of mysql.
 #
 # ⚠️  IMPORTANT: Change all default passwords before deploying to production!
-
-version: '3.4' # For compatibility with older Docker versions
 
 services:
   new-api:
     build:
       context: .
       dockerfile: Dockerfile
-    image: new-api:local
+      pull: true
+      args:
+        GOPROXY: ${GOPROXY:-https://goproxy.io,https://proxy.golang.org,direct}
+        GOSUMDB: ${GOSUMDB:-sum.golang.org}
+    image: new-api:latest
     container_name: new-api
     restart: always
     command: --log-dir /app/logs
@@ -39,23 +53,17 @@ services:
       - ./data:/data
       - ./logs:/app/logs
     environment:
-#      - SQL_DSN=postgresql://root:123456@postgres:5432/new-api # PostgreSQL (uncomment postgres service + depends_on below)
-      - SQL_DSN=root:123456@tcp(mysql:3306)/new-api # ⚠️ IMPORTANT: Change the password in production!
-      - REDIS_CONN_STRING=redis://:123456@redis:6379 # ⚠️ IMPORTANT: Change the password in production!
+      - SQL_DSN=root:123456@tcp(mysql:3306)/new-api
+      - REDIS_CONN_STRING=redis://:123456@redis:6379
       - TZ=Asia/Shanghai
-      - ERROR_LOG_ENABLED=true # 是否启用错误日志记录 (Whether to enable error log recording)
-      - BATCH_UPDATE_ENABLED=true  # 是否启用批量更新 (Whether to enable batch update)
-      - NODE_NAME=new-api-node-1  # 节点名称，用于审计日志中标识节点身份；多节点/容器部署时建议设置 (Node name used in audit logs; recommended when running multiple instances or in containers)
-#      - STREAMING_TIMEOUT=300  # 流模式无响应超时时间，单位秒，默认120秒，如果出现空补全可以尝试改为更大值 （Streaming timeout in seconds, default is 120s. Increase if experiencing empty completions）
-#      - SESSION_SECRET=random_string  # 多机部署时设置，必须修改这个随机字符串！！ （multi-node deployment, set this to a random string!!!!!!!）
-#      - SYNC_FREQUENCY=60  # Uncomment if regular database syncing is needed
-#      - GOOGLE_ANALYTICS_ID=G-XXXXXXXXXX  # Google Analytics 的测量 ID (Google Analytics Measurement ID)
-#      - UMAMI_WEBSITE_ID=xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx  # Umami 网站 ID (Umami Website ID)
-#      - UMAMI_SCRIPT_URL=https://analytics.umami.is/script.js  # Umami 脚本 URL，默认为官方地址 (Umami Script URL, defaults to official URL)
-
+      - ERROR_LOG_ENABLED=true
+      - BATCH_UPDATE_ENABLED=true
+      - NODE_NAME=new-api-node-1
     depends_on:
-      - redis
-      - mysql
+      mysql:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
     networks:
       - new-api-network
     healthcheck:
@@ -63,37 +71,37 @@ services:
       interval: 30s
       timeout: 10s
       retries: 3
+      start_period: 60s
 
   redis:
-    image: redis:latest
+    image: ${REDIS_IMAGE:-redis:latest}
     container_name: redis
     restart: always
-    command: ["redis-server", "--requirepass", "123456"]  # ⚠️ IMPORTANT: Change this password in production!
+    command: ["redis-server", "--requirepass", "123456"]
+    healthcheck:
+      test: ["CMD", "redis-cli", "-a", "123456", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 5s
     networks:
       - new-api-network
 
-#  postgres:
-#    image: postgres:15
-#    container_name: postgres
-#    restart: always
-#    environment:
-#      POSTGRES_USER: root
-#      POSTGRES_PASSWORD: 123456
-#      POSTGRES_DB: new-api
-#    volumes:
-#      - pg_data:/var/lib/postgresql/data
-#    networks:
-#      - new-api-network
-
   mysql:
-    image: mysql:8.2
+    image: ${MYSQL_IMAGE:-mysql:8.0.34}
     container_name: mysql
     restart: always
     environment:
-      MYSQL_ROOT_PASSWORD: 123456  # ⚠️ IMPORTANT: Change this password in production!
+      MYSQL_ROOT_PASSWORD: 123456
       MYSQL_DATABASE: new-api
     volumes:
       - mysql_data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "127.0.0.1", "-uroot", "-p123456"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+      start_period: 40s
     networks:
       - new-api-network
     command:
@@ -101,11 +109,8 @@ services:
         '--character-set-server=utf8mb4',
         '--collation-server=utf8mb4_unicode_ci',
       ]
-#    ports:
-#      - "3306:3306"  # Uncomment if you need to access MySQL from outside Docker
 
 volumes:
-#  pg_data:
   mysql_data:
 
 networks:
