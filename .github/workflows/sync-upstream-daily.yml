@@ -1,0 +1,93 @@
+name: Daily Sync Upstream
+
+permissions:
+  contents: write
+
+on:
+  schedule:
+    # 02:00 Asia/Shanghai (UTC+8) every day
+    - cron: '0 18 * * *'
+  workflow_dispatch:
+
+concurrency:
+  group: sync-upstream-daily
+  cancel-in-progress: false
+
+env:
+  UPSTREAM_REPO: QuantumNous/new-api
+  UPSTREAM_BRANCH: main
+  TARGET_BRANCH: main
+  GITEE_OWNER: liuyucen
+  GITEE_REPO: new-abroad
+
+jobs:
+  sync-upstream:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Configure Git
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+      - name: Add remotes
+        run: |
+          git remote add upstream "https://github.com/${UPSTREAM_REPO}.git"
+          git remote add gitee "https://oauth2:${{ secrets.GITEE_TOKEN }}@gitee.com/${GITEE_OWNER}/${GITEE_REPO}.git"
+
+      - name: Fetch branches
+        run: |
+          git fetch upstream "${UPSTREAM_BRANCH}"
+          git fetch origin "${TARGET_BRANCH}"
+          git fetch gitee "${TARGET_BRANCH}" || true
+
+      - name: Merge upstream
+        id: merge
+        run: |
+          set -euo pipefail
+          MERGE_MSG="chore: sync upstream ${UPSTREAM_REPO} $(date -u +%Y-%m-%d)"
+          if git merge-base --is-ancestor "upstream/${UPSTREAM_BRANCH}" HEAD; then
+            echo "status=up-to-date" >> "$GITHUB_OUTPUT"
+            echo "Already up to date with upstream/${UPSTREAM_BRANCH}"
+            exit 0
+          fi
+          if git merge "upstream/${UPSTREAM_BRANCH}" -m "$MERGE_MSG" --no-edit; then
+            echo "status=merged" >> "$GITHUB_OUTPUT"
+            echo "Merged upstream/${UPSTREAM_BRANCH}"
+          else
+            git merge --abort
+            echo "status=conflict" >> "$GITHUB_OUTPUT"
+            echo "::error::Merge conflict with upstream/${UPSTREAM_BRANCH}. Resolve manually."
+            exit 1
+          fi
+
+      - name: Push to GitHub
+        if: steps.merge.outputs.status == 'merged'
+        run: git push origin "${TARGET_BRANCH}"
+
+      - name: Push to Gitee
+        if: steps.merge.outputs.status == 'merged'
+        run: git push gitee "${TARGET_BRANCH}"
+
+      - name: Summary
+        if: always()
+        run: |
+          case "${{ steps.merge.outputs.status }}" in
+            up-to-date)
+              echo "No upstream changes. Remotes unchanged."
+              ;;
+            merged)
+              echo "Synced upstream into ${TARGET_BRANCH} and pushed to GitHub + Gitee."
+              ;;
+            conflict)
+              echo "Sync failed due to merge conflict."
+              ;;
+            *)
+              echo "Sync did not complete."
+              ;;
+          esac
