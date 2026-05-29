@@ -59,6 +59,7 @@ import { loginFormSchema } from '@/features/auth/constants'
 import { useAuthRedirect } from '@/features/auth/hooks/use-auth-redirect'
 import { useTurnstile } from '@/features/auth/hooks/use-turnstile'
 import { beginPasskeyLogin, finishPasskeyLogin } from '@/features/auth/passkey'
+import { useAuthAnimationOptional } from '@/features/auth/auth-animation-context'
 import type { AuthFormProps } from '@/features/auth/types'
 
 export function UserAuthForm({
@@ -120,6 +121,13 @@ export function UserAuthForm({
       password: '',
     },
   })
+
+  const authAnimation = useAuthAnimationOptional()
+  const passwordValue = form.watch('password')
+
+  useEffect(() => {
+    authAnimation?.setPasswordLength(passwordValue?.length ?? 0)
+  }, [authAnimation, passwordValue])
 
   const wechatQrCodeUrl = useMemo(() => {
     return (
@@ -293,6 +301,8 @@ export function UserAuthForm({
                 <Input
                   placeholder={t('Enter your username or email')}
                   {...field}
+                  onFocus={() => authAnimation?.setIsTyping(true)}
+                  onBlur={() => authAnimation?.setIsTyping(false)}
                 />
               </FormControl>
               <FormMessage />
@@ -308,7 +318,11 @@ export function UserAuthForm({
             <FormItem className='relative'>
               <FormLabel>{t('Password')}</FormLabel>
               <FormControl>
-                <PasswordInput placeholder={t('Enter password')} {...field} />
+                <PasswordInput
+                  placeholder={t('Enter password')}
+                  {...field}
+                  onVisibilityChange={authAnimation?.setShowPassword}
+                />
               </FormControl>
               <FormMessage />
               <Link

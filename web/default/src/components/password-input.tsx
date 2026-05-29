@@ -27,15 +27,25 @@ type PasswordInputProps = Omit<
   'type'
 > & {
   ref?: React.Ref<HTMLInputElement>
+  onVisibilityChange?: (visible: boolean) => void
 }
 
 export function PasswordInput({
   className,
   disabled,
   ref,
+  onVisibilityChange,
   ...props
 }: PasswordInputProps) {
   const [showPassword, setShowPassword] = React.useState(false)
+
+  const toggleVisibility = () => {
+    setShowPassword((prev) => {
+      const next = !prev
+      onVisibilityChange?.(next)
+      return next
+    })
+  }
 
   return (
     <div className={cn('relative rounded-md', className)}>
@@ -51,7 +61,7 @@ export function PasswordInput({
         variant='ghost'
         disabled={disabled}
         className='text-muted-foreground absolute end-1 top-1/2 h-6 w-6 -translate-y-1/2 rounded-md'
-        onClick={() => setShowPassword((prev) => !prev)}
+        onClick={toggleVisibility}
         aria-label='Toggle password visibility'
       >
         {showPassword ? (

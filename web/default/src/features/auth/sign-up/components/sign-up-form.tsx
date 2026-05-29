@@ -53,6 +53,7 @@ import { registerFormSchema } from '@/features/auth/constants'
 import { useAuthRedirect } from '@/features/auth/hooks/use-auth-redirect'
 import { useEmailVerification } from '@/features/auth/hooks/use-email-verification'
 import { useTurnstile } from '@/features/auth/hooks/use-turnstile'
+import { useAuthAnimationOptional } from '@/features/auth/auth-animation-context'
 import { getAffiliateCode } from '@/features/auth/lib/storage'
 
 export function SignUpForm({
@@ -98,6 +99,13 @@ export function SignUpForm({
   })
 
   const emailValue = form.watch('email')
+  const authAnimation = useAuthAnimationOptional()
+  const passwordValue = form.watch('password')
+
+  useEffect(() => {
+    authAnimation?.setPasswordLength(passwordValue?.length ?? 0)
+  }, [authAnimation, passwordValue])
+
   const emailVerificationRequired = !!status?.email_verification
   const hasUserAgreement = Boolean(status?.user_agreement_enabled)
   const hasPrivacyPolicy = Boolean(status?.privacy_policy_enabled)
@@ -229,7 +237,12 @@ export function SignUpForm({
             <FormItem>
               <FormLabel>{t('Username')}</FormLabel>
               <FormControl>
-                <Input placeholder={t('Enter your username')} {...field} />
+                <Input
+                  placeholder={t('Enter your username')}
+                  {...field}
+                  onFocus={() => authAnimation?.setIsTyping(true)}
+                  onBlur={() => authAnimation?.setIsTyping(false)}
+                />
               </FormControl>
               <FormMessage />
             </FormItem>
@@ -247,6 +260,7 @@ export function SignUpForm({
                 <PasswordInput
                   placeholder={t('Enter password (8-20 characters)')}
                   {...field}
+                  onVisibilityChange={authAnimation?.setShowPassword}
                 />
               </FormControl>
               <FormMessage />
@@ -286,6 +300,8 @@ export function SignUpForm({
                       placeholder={t('name@example.com')}
                       type='email'
                       {...field}
+                      onFocus={() => authAnimation?.setIsTyping(true)}
+                      onBlur={() => authAnimation?.setIsTyping(false)}
                     />
                   </FormControl>
                   <FormMessage />

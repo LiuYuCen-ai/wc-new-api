@@ -155,12 +155,9 @@ export function Hero(props: HeroProps) {
 
   return (
     <section
-      className={`relative z-10 isolate min-h-svh overflow-hidden px-4 pt-28 pb-16 sm:px-6 md:pt-36 md:pb-24 lg:px-8 ${props.className ?? ''}`}
+      className={`relative z-10 isolate flex min-h-[max(100svh,560px)] flex-col overflow-hidden px-4 pt-28 pb-16 sm:min-h-[max(100svh,640px)] sm:px-6 md:pt-36 md:pb-24 lg:px-8 ${props.className ?? ''}`}
     >
-      <div
-        aria-hidden
-        className='absolute inset-x-0 top-0 -z-30 h-svh min-h-[560px] sm:min-h-[640px]'
-      >
+      <div aria-hidden className='pointer-events-none absolute inset-0 -z-30 min-h-full'>
         {HERO_SLIDES.map((item, index) => (
           <img
             key={item.src}
@@ -174,11 +171,11 @@ export function Hero(props: HeroProps) {
       </div>
       <div
         aria-hidden
-        className='absolute inset-x-0 top-0 -z-10 h-svh min-h-[560px] bg-[linear-gradient(to_right,rgba(255,255,255,0.14)_1px,transparent_1px),linear-gradient(to_bottom,rgba(255,255,255,0.1)_1px,transparent_1px)] [mask-image:radial-gradient(ellipse_70%_55%_at_50%_35%,black_20%,transparent_100%)] bg-[size:4rem_4rem] opacity-[0.12] sm:min-h-[640px]'
+        className='pointer-events-none absolute inset-0 -z-10 min-h-full bg-[linear-gradient(to_right,rgba(255,255,255,0.14)_1px,transparent_1px),linear-gradient(to_bottom,rgba(255,255,255,0.1)_1px,transparent_1px)] [mask-image:radial-gradient(ellipse_70%_55%_at_50%_35%,black_20%,transparent_100%)] bg-[size:clamp(2rem,5vw,4rem)_clamp(2rem,5vw,4rem)] opacity-[0.12]'
       />
 
-      <div className='mx-auto grid min-h-[calc(100svh-11rem)] max-w-7xl items-center gap-10 md:min-h-[calc(100svh-15rem)] lg:grid-cols-[minmax(0,1fr)_minmax(360px,500px)] lg:gap-12 xl:gap-16'>
-        <div className='max-w-3xl text-white'>
+      <div className='relative mx-auto grid w-full min-h-0 max-w-7xl flex-1 auto-rows-min items-center gap-10 self-stretch lg:grid-cols-[minmax(0,1fr)_minmax(min(100%,360px),min(500px,45vw))] lg:gap-12 xl:gap-16'>
+        <div className='min-w-0 max-w-3xl text-white'>
           <div
             className='landing-animate-fade-up mb-6 inline-flex items-center gap-2 rounded-full border border-white/15 bg-white/10 px-4 py-2 text-sm font-medium text-white/90 shadow-lg shadow-black/20 backdrop-blur-md'
             style={{ animationDelay: '0ms' }}
@@ -250,7 +247,7 @@ export function Hero(props: HeroProps) {
         </div>
 
         <div
-          className='landing-animate-fade-up relative mx-auto w-full max-w-[500px] opacity-0 lg:mx-0 lg:justify-self-end xl:translate-x-[clamp(0rem,calc((100vw-80rem)/2),10rem)]'
+          className='landing-animate-fade-up relative mx-auto w-full min-w-0 max-w-[min(500px,100%)] opacity-0 lg:mx-0 lg:max-w-none lg:justify-self-end xl:max-w-[min(500px,calc(45vw+2rem))] xl:translate-x-[clamp(0rem,calc((100vw-80rem)/2),10rem)]'
           style={{ animationDelay: '360ms' }}
         >
           <div className='absolute -inset-6 rounded-[2rem] bg-yellow-400/20 blur-3xl sm:-inset-8 sm:rounded-[2.5rem]' />
