@@ -69,7 +69,7 @@ export interface PublicHeaderProps {
 export function PublicHeader(props: PublicHeaderProps) {
   const {
     navLinks = defaultTopNavLinks,
-    showThemeSwitch = true,
+    showThemeSwitch = false,
     showLanguageSwitcher = true,
     logo: customLogo,
     siteName: customSiteName,
@@ -97,6 +97,7 @@ export function PublicHeader(props: PublicHeaderProps) {
   const notifications = useNotifications()
   const routerState = useRouterState()
   const pathname = routerState.location.pathname
+  const useHeroNavStyle = pathname === '/'
 
   const user = auth.user
   const isAuthenticated = !!user
@@ -191,16 +192,28 @@ export function PublicHeader(props: PublicHeaderProps) {
             className={cn(
               'flex items-center justify-between transition-all duration-700 ease-[cubic-bezier(0.16,1,0.3,1)]',
               scrolled
-                ? 'bg-background/60 ring-border/50 h-12 rounded-2xl pr-1.5 pl-4 shadow-[0_2px_16px_-6px_rgba(0,0,0,0.08),0_0_0_0.5px_rgba(0,0,0,0.02)] ring-[0.5px] backdrop-blur-2xl dark:shadow-[0_2px_16px_-6px_rgba(0,0,0,0.4)]'
-                : 'h-16 px-2'
+                ? cn(
+                    'h-12 rounded-2xl pr-1.5 pl-4',
+                    useHeroNavStyle
+                      ? 'bg-slate-950/18 text-white shadow-[0_18px_60px_-38px_rgba(15,23,42,0.75)] ring-1 ring-white/8 backdrop-blur-sm [&_button]:text-white [&_button]:hover:bg-white/10 [&_button]:hover:text-white'
+                      : 'bg-background/60 ring-border/50 shadow-[0_2px_16px_-6px_rgba(0,0,0,0.08),0_0_0_0.5px_rgba(0,0,0,0.02)] ring-[0.5px] backdrop-blur-2xl dark:shadow-[0_2px_16px_-6px_rgba(0,0,0,0.4)]'
+                  )
+                : cn(
+                    'h-16 px-2',
+                    useHeroNavStyle &&
+                      'rounded-2xl bg-slate-950/18 text-white shadow-[0_18px_60px_-38px_rgba(15,23,42,0.75)] ring-1 ring-white/8 backdrop-blur-sm [&_button]:text-white [&_button]:hover:bg-white/10 [&_button]:hover:text-white'
+                  )
             )}
           >
             {/* Logo */}
             <Link
               to={homeUrl}
-              className='group flex shrink-0 items-center gap-2.5'
+              className={cn(
+                'group flex shrink-0 items-center gap-2.5 transition-colors duration-200',
+                useHeroNavStyle ? 'text-white' : 'text-foreground'
+              )}
             >
-              <div className='flex size-7 shrink-0 items-center justify-center transition-all duration-300 group-hover:scale-105'>
+              <div className='flex size-7 shrink-0 items-center justify-center transition-all duration-300 group-hover:scale-105 group-hover:rotate-3'>
                 {loading ? (
                   <Skeleton className='size-full rounded-lg' />
                 ) : customLogo ? (
@@ -223,6 +236,17 @@ export function PublicHeader(props: PublicHeaderProps) {
             <div className='hidden items-center gap-0.5 sm:flex'>
               {links.map((link, i) => {
                 const isActive = pathname === link.href
+                const linkClassName = cn(
+                  'relative rounded-full px-3 py-1.5 text-[13px] font-medium transition-all duration-200 after:absolute after:right-3 after:-bottom-0.5 after:left-3 after:h-px after:origin-center after:scale-x-0 after:bg-current after:opacity-0 after:transition-all after:duration-200 focus-visible:outline-none focus-visible:ring-2',
+                  useHeroNavStyle
+                    ? 'text-white/78 hover:bg-transparent hover:text-white hover:after:scale-x-100 hover:after:opacity-70 focus-visible:ring-white/40'
+                    : 'text-muted-foreground hover:bg-muted hover:text-foreground focus-visible:ring-ring/50',
+                  isActive &&
+                    (useHeroNavStyle
+                      ? 'bg-transparent text-white after:scale-x-100 after:opacity-80'
+                      : 'bg-muted text-foreground'),
+                  link.disabled && 'pointer-events-none opacity-50'
+                )
                 if (link.external) {
                   return (
                     <a
@@ -233,10 +257,7 @@ export function PublicHeader(props: PublicHeaderProps) {
                       aria-disabled={link.disabled}
                       tabIndex={link.disabled ? -1 : undefined}
                       onClick={(event) => handleNavLinkClick(event, link)}
-                      className={cn(
-                        'text-muted-foreground hover:text-foreground rounded-lg px-3 py-1.5 text-[13px] font-medium transition-colors duration-200',
-                        link.disabled && 'pointer-events-none opacity-50'
-                      )}
+                      className={linkClassName}
                     >
                       {t(link.title)}
                     </a>
@@ -248,13 +269,7 @@ export function PublicHeader(props: PublicHeaderProps) {
                     to={link.href}
                     disabled={link.disabled}
                     onClick={(event) => handleNavLinkClick(event, link)}
-                    className={cn(
-                      'rounded-lg px-3 py-1.5 text-[13px] font-medium transition-colors duration-200',
-                      isActive
-                        ? 'text-foreground'
-                        : 'text-muted-foreground hover:text-foreground',
-                      link.disabled && 'pointer-events-none opacity-50'
-                    )}
+                    className={linkClassName}
                   >
                     {t(link.title)}
                   </Link>
@@ -264,7 +279,12 @@ export function PublicHeader(props: PublicHeaderProps) {
               {(showLanguageSwitcher ||
                 showThemeSwitch ||
                 showNotifications) && (
-                <div className='bg-border/40 mx-2 h-4 w-px' />
+                <div
+                  className={cn(
+                    'mx-2 h-4 w-px',
+                    useHeroNavStyle ? 'bg-white/25' : 'bg-border/40'
+                  )}
+                />
               )}
 
               {showLanguageSwitcher && <LanguageSwitcher />}
@@ -279,12 +299,22 @@ export function PublicHeader(props: PublicHeaderProps) {
                   notice={notifications.notice}
                   announcements={notifications.announcements}
                   loading={notifications.loading}
+                  className={
+                    useHeroNavStyle
+                      ? 'rounded-full text-white hover:bg-white/10 hover:text-white'
+                      : 'rounded-full'
+                  }
                 />
               )}
 
               {showAuthButtons && (
                 <>
-                  <div className='bg-border/40 mx-1 h-4 w-px' />
+                  <div
+                    className={cn(
+                      'mx-1 h-4 w-px',
+                      useHeroNavStyle ? 'bg-white/25' : 'bg-border/40'
+                    )}
+                  />
                   {loading ? (
                     <Skeleton className='h-8 w-20 rounded-lg' />
                   ) : isAuthenticated ? (
@@ -292,7 +322,11 @@ export function PublicHeader(props: PublicHeaderProps) {
                   ) : (
                     <Button
                       size='sm'
-                      className='h-8 rounded-lg px-3.5 text-xs font-medium'
+                      className={cn(
+                        'h-8 rounded-full px-3.5 text-xs font-medium transition-all duration-200 hover:-translate-y-0.5 active:translate-y-0',
+                        useHeroNavStyle &&
+                          'bg-white text-slate-950 shadow-sm [a]:hover:bg-white [a]:active:bg-white hover:text-slate-950 hover:shadow-[0_10px_28px_-12px_rgba(15,23,42,0.45)] focus-visible:ring-white/35'
+                      )}
                       render={<Link to='/sign-in' />}
                     >
                       {t('Sign in')}
@@ -312,7 +346,11 @@ export function PublicHeader(props: PublicHeaderProps) {
                 type='button'
                 variant='ghost'
                 size='icon'
-                className='size-9'
+                className={cn(
+                  'size-9 rounded-full',
+                  useHeroNavStyle &&
+                    'text-white hover:bg-white/10 hover:text-white'
+                )}
                 onClick={() => setMobileOpen((v) => !v)}
                 aria-label={t('Toggle navigation menu')}
               >

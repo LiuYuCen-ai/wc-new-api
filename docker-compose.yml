@@ -86,7 +86,7 @@ services:
 #      - new-api-network
 
   mysql:
-    image: mysql:8.0.34
+    image: mysql:8.2
     container_name: mysql
     restart: always
     environment:
