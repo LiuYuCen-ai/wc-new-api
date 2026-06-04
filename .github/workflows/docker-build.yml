@@ -72,7 +72,7 @@ jobs:
         id: meta
         uses: docker/metadata-action@v5
         with:
-          images: ghcr.io/${{ github.repository }}
+          images: ghcr.io/liuyucen-ai/wc-new-api
 
       - name: Build & push
         id: build
@@ -82,8 +82,8 @@ jobs:
           platforms: ${{ matrix.platform }}
           push: true
           tags: |
-            ghcr.io/${{ github.repository }}:${{ env.TAG }}-${{ matrix.arch }}
-            ghcr.io/${{ github.repository }}:latest-${{ matrix.arch }}
+            ghcr.io/liuyucen-ai/wc-new-api:${{ env.TAG }}-${{ matrix.arch }}
+            ghcr.io/liuyucen-ai/wc-new-api:latest-${{ matrix.arch }}
           labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
@@ -94,13 +94,13 @@ jobs:
         uses: sigstore/cosign-installer@v3
 
       - name: Sign image with cosign
-        run: cosign sign --yes ghcr.io/${{ github.repository }}@${{ steps.build.outputs.digest }}
+        run: cosign sign --yes ghcr.io/liuyucen-ai/wc-new-api@${{ steps.build.outputs.digest }}
 
       - name: Image summary
         run: |
           echo "### Docker Image Digest (${{ matrix.arch }})" >> $GITHUB_STEP_SUMMARY
           echo '```' >> $GITHUB_STEP_SUMMARY
-          echo "ghcr.io/${{ github.repository }}:${TAG}-${{ matrix.arch }}" >> $GITHUB_STEP_SUMMARY
+          echo "ghcr.io/liuyucen-ai/wc-new-api:${TAG}-${{ matrix.arch }}" >> $GITHUB_STEP_SUMMARY
           echo "${{ steps.build.outputs.digest }}" >> $GITHUB_STEP_SUMMARY
           echo '```' >> $GITHUB_STEP_SUMMARY
 
@@ -124,20 +124,20 @@ jobs:
       - name: Create & push manifest (version)
         run: |
           docker buildx imagetools create \
-            -t ghcr.io/${{ github.repository }}:${TAG} \
-            ghcr.io/${{ github.repository }}:${TAG}-amd64 \
-            ghcr.io/${{ github.repository }}:${TAG}-arm64
+            -t ghcr.io/liuyucen-ai/wc-new-api:${TAG} \
+            ghcr.io/liuyucen-ai/wc-new-api:${TAG}-amd64 \
+            ghcr.io/liuyucen-ai/wc-new-api:${TAG}-arm64
 
       - name: Create & push manifest (latest)
         run: |
           docker buildx imagetools create \
-            -t ghcr.io/${{ github.repository }}:latest \
-            ghcr.io/${{ github.repository }}:latest-amd64 \
-            ghcr.io/${{ github.repository }}:latest-arm64
+            -t ghcr.io/liuyucen-ai/wc-new-api:latest \
+            ghcr.io/liuyucen-ai/wc-new-api:latest-amd64 \
+            ghcr.io/liuyucen-ai/wc-new-api:latest-arm64
 
       - name: Manifest summary
         run: |
           echo "### Multi-arch Manifest" >> $GITHUB_STEP_SUMMARY
           echo '```' >> $GITHUB_STEP_SUMMARY
-          docker buildx imagetools inspect ghcr.io/${{ github.repository }}:${TAG} >> $GITHUB_STEP_SUMMARY
+          docker buildx imagetools inspect ghcr.io/liuyucen-ai/wc-new-api:${TAG} >> $GITHUB_STEP_SUMMARY
           echo '```' >> $GITHUB_STEP_SUMMARY
