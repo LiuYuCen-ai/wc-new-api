@@ -328,9 +328,12 @@ export function UserAuthForm({
               <FormControl>
                 <Input
                   placeholder={t('Enter your username or email')}
-                  onFocus={() => handleFieldFocus('username')}
-                  onBlur={handleFieldBlur}
                   {...field}
+                  onFocus={() => handleFieldFocus('username')}
+                  onBlur={(event) => {
+                    field.onBlur()
+                    handleFieldBlur(event)
+                  }}
                 />
               </FormControl>
               <FormMessage />
@@ -343,27 +346,32 @@ export function UserAuthForm({
           control={form.control}
           name='password'
           render={({ field }) => (
-            <FormItem className='relative'>
-              <FormLabel>{t('Password')}</FormLabel>
+            <FormItem>
+              <div className='flex items-center justify-between gap-2'>
+                <FormLabel>{t('Password')}</FormLabel>
+                <Link
+                  to='/forgot-password'
+                  className='text-muted-foreground text-sm font-medium hover:opacity-75'
+                >
+                  {t('Forgot password?')}
+                </Link>
+              </div>
               <FormControl>
                 <PasswordInput
                   placeholder={t('Enter password')}
+                  {...field}
                   onFocus={() => handleFieldFocus('password')}
-                  onBlur={handleFieldBlur}
+                  onBlur={(event) => {
+                    field.onBlur()
+                    handleFieldBlur(event)
+                  }}
                   onChange={(event) => {
                     field.onChange(event)
                     handlePasswordChange(event.target.value)
                   }}
-                  {...field}
                 />
               </FormControl>
               <FormMessage />
-              <Link
-                to='/forgot-password'
-                className='text-muted-foreground absolute end-0 -top-0.5 z-10 text-sm font-medium hover:opacity-75'
-              >
-                {t('Forgot password?')}
-              </Link>
             </FormItem>
           )}
         />

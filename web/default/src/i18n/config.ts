@@ -49,11 +49,8 @@ i18n
       escapeValue: false, // not needed for react as it escapes by default
     },
     detection: {
-      // Prefer English for first visits: do not follow browser locale unless the user
-      // already chose a language (localStorage) or passes ?lng= on the URL.
-      order: ['localStorage', 'querystring'],
+      order: ['localStorage', 'navigator'],
       caches: ['localStorage'],
-      lookupQuerystring: 'lng',
     },
   })
 

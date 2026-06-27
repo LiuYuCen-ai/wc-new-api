@@ -36,10 +36,10 @@ export function AuthLayout({ children, contentClassName }: AuthLayoutProps) {
   return (
     <AuthAnimationProvider>
       <div className='min-h-svh bg-white'>
-        <div className='grid min-h-svh lg:grid-cols-[minmax(420px,1fr)_minmax(420px,560px)]'>
+        <div className='grid min-h-svh lg:grid-cols-[550px_420px] lg:justify-center lg:gap-7'>
           <AuthAnimationSidebar />
 
-          <div className='relative flex min-h-svh items-center justify-center bg-white px-6 py-10 sm:px-10 lg:px-14'>
+          <div className='relative flex min-h-svh items-center justify-center bg-white px-6 py-10 sm:px-10 lg:px-0'>
             <Link
               to='/'
               className='absolute top-4 left-4 z-10 flex items-center gap-2 transition-opacity hover:opacity-80 sm:top-8 sm:left-8 lg:hidden'
@@ -64,7 +64,7 @@ export function AuthLayout({ children, contentClassName }: AuthLayoutProps) {
 
             <div
               className={cn(
-                'w-full max-w-[420px] pt-16 sm:pt-20 lg:max-w-[440px] lg:pt-0',
+                'w-full max-w-[420px] pt-16 sm:pt-20 lg:pt-0',
                 contentClassName
               )}
             >

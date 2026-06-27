@@ -38,7 +38,6 @@ const DEFAULT_HEADER_NAV_MODULES: HeaderNavModules = {
   pricing: { enabled: true, requireAuth: false },
   rankings: { enabled: true, requireAuth: false },
   docs: true,
-  photo: true,
   about: true,
 }
 
@@ -182,7 +181,7 @@ export async function getFreshModuleAccess(
     cacheStatus(status)
     return getModuleAccessFromStatus(status, module)
   } catch {
-    return getModuleAccess(module)
+    return { enabled: false, requireAuth: true }
   }
 }
 

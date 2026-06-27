@@ -1,30 +1,24 @@
 # Frontend Development - Backend built from local source
 #
-# Use a dedicated project name so this never replaces the production stack in docker-compose.yml:
-#   docker compose -p newapi-dev -f docker-compose.dev.yml up -d
-#
 # Usage:
-#   1. docker compose -p newapi-dev -f docker-compose.dev.yml up -d
-#   2. cd web/default && bun install && bun run dev -- --port 3001
-#   3. Open http://localhost:3001 (Rsbuild dev server, API proxied to backend :3000)
+#   1. docker compose -f docker-compose.dev.yml up -d
+#   2. cd web && bun install && bun run dev
+#   3. Open http://localhost:3001 (Rsbuild dev server, API auto-proxied to :3000)
 #
 # Rebuild backend after Go code changes:
-#   docker compose -p newapi-dev -f docker-compose.dev.yml up -d --build new-api
+#   docker compose -f docker-compose.dev.yml up -d --build new-api
 #
 # Stop:
-#   docker compose -p newapi-dev -f docker-compose.dev.yml down
+#   docker compose -f docker-compose.dev.yml down
 #
 # Reset data:
-#   docker compose -p newapi-dev -f docker-compose.dev.yml down -v
+#   docker compose -f docker-compose.dev.yml down -v
 
 services:
   new-api:
     build:
       context: .
       dockerfile: Dockerfile.dev
-      args:
-        GOPROXY: ${GOPROXY:-https://goproxy.io,https://proxy.golang.org,direct}
-        GOSUMDB: ${GOSUMDB:-sum.golang.org}
     image: new-api-dev:local
     container_name: new-api-dev
     restart: unless-stopped

@@ -92,9 +92,9 @@ export function AuthAnimationPanel(props: AuthAnimationPanelProps) {
         <div aria-hidden />
       )}
 
-      <div className='relative z-20 flex min-h-[280px] min-w-0 flex-1 items-center justify-center overflow-hidden pt-2 pb-2 sm:min-h-[500px] sm:pt-4'>
+      <div className='pointer-events-none absolute inset-0 z-10 flex min-w-0 items-center justify-center overflow-hidden px-4 py-20 sm:px-8'>
         <div
-          className='-translate-y-6 scale-[0.55] sm:-translate-y-8 sm:scale-75 md:scale-90 lg:-translate-y-10 lg:scale-100'
+          className='scale-[0.55] sm:scale-75 md:scale-90 lg:scale-100'
           aria-hidden
         >
           <AnimatedCharacters

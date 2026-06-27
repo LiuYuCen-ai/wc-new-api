@@ -60,11 +60,6 @@ export const useNavigation = (t, docsLink, headerNavModules) => {
           ]
         : []),
       {
-        text: t('体验中心'),
-        itemKey: 'photo',
-        to: '/photo',
-      },
-      {
         text: t('关于'),
         itemKey: 'about',
         to: '/about',
@@ -81,10 +76,6 @@ export const useNavigation = (t, docsLink, headerNavModules) => {
         return typeof modules.pricing === 'object'
           ? modules.pricing.enabled
           : modules.pricing;
-      }
-      if (link.itemKey === 'photo') {
-        // 默认开启，管理员可关闭
-        return modules.photo !== false;
       }
       return modules[link.itemKey] === true;
     });
