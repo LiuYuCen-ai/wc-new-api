@@ -41,8 +41,8 @@ services:
       dockerfile: Dockerfile
       pull: true
       args:
-        GOPROXY: ${GOPROXY:-https://goproxy.cn,direct}
-        GOSUMDB: ${GOSUMDB:-sum.golang.google.cn}
+        GOPROXY: ${GOPROXY:-https://goproxy.io,https://proxy.golang.org,direct}
+        GOSUMDB: ${GOSUMDB:-sum.golang.org}
     image: new-api:latest
     container_name: new-api
     restart: always
