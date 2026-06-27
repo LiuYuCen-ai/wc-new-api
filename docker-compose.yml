@@ -1,0 +1,118 @@
+# New-API Docker Compose Configuration
+#
+# This file builds the **new-api** app from source next to this file (your current dev tree).
+#   docker compose up -d --build --force-recreate
+#   http://localhost:3000
+#
+# If you intentionally want a pre-published image instead of a local build,
+# remove the `build:` section from `new-api` and set `image: calciumion/new-api:latest` (or your registry).
+#
+# --- Docker Hub shows EOF (pull mysql/redis / build bases) ---
+# Docker Desktop → Settings → Docker Engine → add:
+#   "registry-mirrors": ["https://docker.m.daocloud.io"]
+# Or one-shot (example mirror; use your own if different):
+#   export MYSQL_IMAGE=docker.m.daocloud.io/library/mysql:8.0.34
+#   export REDIS_IMAGE=docker.m.daocloud.io/library/redis:latest
+#   docker compose pull mysql redis && docker compose build && docker compose up -d
+# Or: docker logout   # sometimes fixes auth.docker.io EOF
+#
+# --- mysql + new-api keep restarting ---
+# 1) See why:
+#      docker logs --tail 80 mysql
+#      docker logs --tail 80 new-api
+# 2) Downgrade MySQL image (e.g. 8.2 → 8.0.34): MySQL cannot open a data dir created by a newer server.
+#      You must remove the volume once (all DB data in that volume is lost):
+#      docker compose down
+#      docker volume rm <project>_mysql_data   # docker volume ls
+#      docker compose up -d
+#    Or if log shows "built by version 80XXX" older/newer mismatch, same: align image to data or wipe volume.
+# 3) new-api log shows dial tcp / connection refused:
+#      Wait until mysql is healthy; fix SQL_DSN password to match MYSQL_ROOT_PASSWORD.
+#
+# PostgreSQL instead: add postgres service + pg_data volume, postgresql:// SQL_DSN,
+#   and depends_on postgres instead of mysql.
+#
+# ⚠️  IMPORTANT: Change all default passwords before deploying to production!
+
+services:
+  new-api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      pull: true
+      args:
+        GOPROXY: ${GOPROXY:-https://goproxy.cn,direct}
+        GOSUMDB: ${GOSUMDB:-sum.golang.google.cn}
+    image: new-api:latest
+    container_name: new-api
+    restart: always
+    command: --log-dir /app/logs
+    ports:
+      - "3000:3000"
+    volumes:
+      - ./data:/data
+      - ./logs:/app/logs
+    environment:
+      - SQL_DSN=root:123456@tcp(mysql:3306)/new-api
+      - REDIS_CONN_STRING=redis://:123456@redis:6379
+      - TZ=Asia/Shanghai
+      - ERROR_LOG_ENABLED=true
+      - BATCH_UPDATE_ENABLED=true
+      - NODE_NAME=new-api-node-1
+    depends_on:
+      mysql:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - new-api-network
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O - http://localhost:3000/api/status | grep -o '\"success\":\\s*true' || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+
+  redis:
+    image: ${REDIS_IMAGE:-redis:latest}
+    container_name: redis
+    restart: always
+    command: ["redis-server", "--requirepass", "123456"]
+    healthcheck:
+      test: ["CMD", "redis-cli", "-a", "123456", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 5s
+    networks:
+      - new-api-network
+
+  mysql:
+    image: ${MYSQL_IMAGE:-mysql:8.0.34}
+    container_name: mysql
+    restart: always
+    environment:
+      MYSQL_ROOT_PASSWORD: 123456
+      MYSQL_DATABASE: new-api
+    volumes:
+      - mysql_data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "127.0.0.1", "-uroot", "-p123456"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+      start_period: 40s
+    networks:
+      - new-api-network
+    command:
+      [
+        '--character-set-server=utf8mb4',
+        '--collation-server=utf8mb4_unicode_ci',
+      ]
+
+volumes:
+  mysql_data:
+
+networks:
+  new-api-network:
+    driver: bridge
