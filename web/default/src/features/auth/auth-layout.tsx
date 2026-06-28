@@ -36,32 +36,34 @@ export function AuthLayout({ children, contentClassName }: AuthLayoutProps) {
   return (
     <AuthAnimationProvider>
       <div className='min-h-svh bg-white'>
+        <Link
+          to='/'
+          className='fixed top-4 left-4 z-30 flex items-center gap-2 text-lg font-semibold text-gray-900 transition-opacity hover:opacity-80 sm:top-8 sm:left-8'
+        >
+          <div className='relative h-8 w-8 shrink-0'>
+            {loading ? (
+              <Skeleton className='absolute inset-0 rounded-lg' />
+            ) : (
+              <img
+                src={logo}
+                alt={t('Logo')}
+                width={32}
+                height={32}
+                className='rounded-lg border border-gray-200 bg-white p-1'
+              />
+            )}
+          </div>
+          {loading ? (
+            <Skeleton className='h-7 w-36' />
+          ) : (
+            <span>{systemName}</span>
+          )}
+        </Link>
+
         <div className='grid min-h-svh lg:grid-cols-[550px_420px] lg:justify-center lg:gap-7'>
           <AuthAnimationSidebar />
 
           <div className='relative flex min-h-svh items-center justify-center bg-white px-6 py-10 sm:px-10 lg:px-0'>
-            <Link
-              to='/'
-              className='absolute top-4 left-4 z-10 flex items-center gap-2 transition-opacity hover:opacity-80 sm:top-8 sm:left-8 lg:hidden'
-            >
-              <div className='relative h-8 w-8'>
-                {loading ? (
-                  <Skeleton className='absolute inset-0 rounded-full' />
-                ) : (
-                  <img
-                    src={logo}
-                    alt={t('Logo')}
-                    className='h-8 w-8 rounded-full object-cover'
-                  />
-                )}
-              </div>
-              {loading ? (
-                <Skeleton className='h-6 w-24' />
-              ) : (
-                <h1 className='text-xl font-medium'>{systemName}</h1>
-              )}
-            </Link>
-
             <div
               className={cn(
                 'w-full max-w-[420px] pt-16 sm:pt-20 lg:pt-0',

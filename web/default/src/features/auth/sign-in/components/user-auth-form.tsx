@@ -121,7 +121,7 @@ export function UserAuthForm({
   useEffect(() => {
     return () => {
       setAuthAnimationState?.({
-        isTyping: false,
+        focusedField: null,
         showPassword: false,
         passwordLength: 0,
       })
@@ -130,22 +130,31 @@ export function UserAuthForm({
 
   const handleFieldFocus = (field: 'username' | 'password') => {
     setAuthAnimationState?.({
-      isTyping: field === 'username',
-      showPassword: field === 'password',
+      focusedField: field,
     })
   }
 
-  const handleFieldBlur = (_event?: FocusEvent<HTMLInputElement>) => {
+  const handleFieldBlur = (event?: FocusEvent<HTMLInputElement>) => {
+    const nextTarget = event?.relatedTarget
+    const formRoot = event?.currentTarget.form
+    if (nextTarget instanceof Node && formRoot?.contains(nextTarget)) {
+      return
+    }
+
     setAuthAnimationState?.({
-      isTyping: false,
-      showPassword: false,
+      focusedField: null,
     })
   }
 
   const handlePasswordChange = (value: string) => {
     setAuthAnimationState?.({
-      showPassword: true,
       passwordLength: value.length,
+    })
+  }
+
+  const handlePasswordVisibilityChange = (visible: boolean) => {
+    setAuthAnimationState?.({
+      showPassword: visible,
     })
   }
 
@@ -369,6 +378,7 @@ export function UserAuthForm({
                     field.onChange(event)
                     handlePasswordChange(event.target.value)
                   }}
+                  onVisibilityChange={handlePasswordVisibilityChange}
                 />
               </FormControl>
               <FormMessage />

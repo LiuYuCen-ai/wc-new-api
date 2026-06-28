@@ -214,8 +214,8 @@ export function Features(_props: FeaturesProps) {
   return (
     <section className='relative z-10 px-6 py-24 md:py-32'>
       <div className='mx-auto max-w-6xl'>
-        <AnimateInView className='relative left-1/2 z-20 mb-20 w-screen max-w-none -translate-x-1/2 px-6 pt-4 sm:px-10 lg:px-16'>
-          <div className='mx-auto max-w-[1280px] rounded-3xl border border-slate-200/80 bg-white/75 p-8 shadow-[0_18px_60px_rgba(15,23,42,0.08)] backdrop-blur-sm 2xl:max-w-[1360px]'>
+        <AnimateInView className='relative left-1/2 z-20 mb-20 w-screen max-w-none -translate-x-1/2 pt-4'>
+          <div className='w-full border-y border-slate-200/80 bg-white/75 px-6 py-8 shadow-[0_18px_60px_rgba(15,23,42,0.08)] backdrop-blur-sm sm:px-10 lg:px-16'>
             <div className='mb-10 max-w-2xl'>
               <p className='mb-3 text-sm font-bold tracking-widest text-purple-700 uppercase md:text-base'>
                 {t('Advantages')}

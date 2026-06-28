@@ -176,11 +176,15 @@ export function Hero(props: HeroProps) {
         aria-hidden
         className='absolute inset-0 -z-10 min-h-full bg-[linear-gradient(to_right,rgba(255,255,255,0.14)_1px,transparent_1px),linear-gradient(to_bottom,rgba(255,255,255,0.1)_1px,transparent_1px)] [mask-image:radial-gradient(ellipse_70%_55%_at_50%_35%,black_20%,transparent_100%)] bg-[size:4rem_4rem] opacity-[0.12]'
       />
+      <div
+        aria-hidden
+        className='absolute inset-0 -z-20 min-h-full bg-[linear-gradient(90deg,rgba(2,6,23,0.18)_0%,rgba(161,164,176,0.18)_42%,rgba(2,6,23,0.18)_70%,rgba(2,6,23,0.18)_100%)]'
+      />
 
       <div className='hero-adaptive__grid mx-auto grid min-h-[calc(100svh-9.5rem)] max-w-7xl items-center gap-8 md:min-h-[calc(100svh-11rem)] md:gap-9 lg:grid-cols-[minmax(0,1fr)_minmax(320px,440px)] lg:gap-10 xl:min-h-[calc(100svh-15rem)] xl:gap-16 xl:grid-cols-[minmax(0,1fr)_minmax(360px,500px)]'>
-        <div className='hero-adaptive__content max-w-3xl text-white'>
+        <div className='hero-adaptive__content max-w-3xl text-white [text-rendering:optimizeLegibility] [-webkit-font-smoothing:antialiased] [font-synthesis-weight:none]'>
           <div
-            className='landing-animate-fade-up mb-6 inline-flex items-center gap-2 rounded-full border border-white/15 bg-white/10 px-4 py-2 text-sm font-medium text-white/90 shadow-lg shadow-black/20 backdrop-blur-md'
+            className='landing-animate-fade-up mb-6 inline-flex items-center gap-2 rounded-full border border-white/15 bg-black/35 px-4 py-2 text-sm font-semibold text-white shadow-lg shadow-black/25 backdrop-blur-md'
             style={{ animationDelay: '0ms' }}
           >
             <Sparkles className='size-4 text-yellow-300' />
@@ -188,14 +192,14 @@ export function Hero(props: HeroProps) {
           </div>
 
           <h1
-            className='hero-adaptive__title landing-animate-fade-up max-w-[10.5ch] text-[clamp(2.5rem,6vw,5.75rem)] leading-[0.98] font-bold tracking-tight text-balance lg:max-w-[11ch] xl:max-w-none xl:text-[clamp(2.6rem,6.8vw,5.75rem)] xl:leading-[1.04]'
+            className={`hero-adaptive__title landing-animate-fade-up max-w-[10.5ch] bg-gradient-to-r ${slide.tone} bg-clip-text text-[clamp(2.5rem,6vw,5.75rem)] leading-[0.98] font-extrabold tracking-tight text-balance text-transparent drop-shadow-[0_3px_18px_rgba(0,0,0,0.55)] lg:max-w-[11ch] xl:max-w-none xl:text-[clamp(2.6rem,6.8vw,5.75rem)] xl:leading-[1.04]`}
             style={{ animationDelay: '80ms' }}
           >
             {t(slide.title)}
           </h1>
 
           <p
-            className='landing-animate-fade-up mt-6 max-w-2xl text-base leading-8 text-white/78 opacity-0 md:text-xl'
+            className='landing-animate-fade-up mt-6 max-w-2xl text-base leading-8 font-medium text-white opacity-0 drop-shadow-[0_2px_10px_rgba(0,0,0,0.55)] md:text-xl'
             style={{ animationDelay: '160ms' }}
           >
             {t(slide.desc)}
@@ -240,7 +244,7 @@ export function Hero(props: HeroProps) {
             {TRUST_SIGNALS.map((signal) => (
               <span
                 key={signal}
-                className='inline-flex items-center gap-2 rounded-full border border-white/12 bg-black/25 px-3 py-1.5 text-sm text-white/78 backdrop-blur-md'
+                className='inline-flex items-center gap-2 rounded-full border border-white/12 bg-black/45 px-3 py-1.5 text-sm font-semibold text-white backdrop-blur-md'
               >
                 <CheckCircle2 className='size-4 text-yellow-300' />
                 {t(signal)}

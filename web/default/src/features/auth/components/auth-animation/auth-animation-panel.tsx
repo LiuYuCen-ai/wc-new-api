@@ -16,12 +16,9 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import { Link } from '@tanstack/react-router'
 import { useTranslation } from 'react-i18next'
 import { cn } from '@/lib/utils'
 import { useStatus } from '@/hooks/use-status'
-import { useSystemConfig } from '@/hooks/use-system-config'
-import { Skeleton } from '@/components/ui/skeleton'
 import {
   defaultAuthAnimationState,
   useAuthAnimation,
@@ -30,6 +27,7 @@ import { AnimatedCharacters } from './animated-characters'
 
 export type AuthAnimationPanelProps = {
   isTyping: boolean
+  isPasswordFocused: boolean
   showPassword: boolean
   passwordLength: number
   /** Default true for standalone previews. Set false for hidden until `lg` like split auth layout. */
@@ -43,7 +41,6 @@ export type AuthAnimationPanelProps = {
  */
 export function AuthAnimationPanel(props: AuthAnimationPanelProps) {
   const { t } = useTranslation()
-  const { systemName, logo, loading } = useSystemConfig()
   const { status } = useStatus()
   const hasUserAgreement = Boolean(status?.user_agreement_enabled)
   const hasPrivacyPolicy = Boolean(status?.privacy_policy_enabled)
@@ -55,43 +52,13 @@ export function AuthAnimationPanel(props: AuthAnimationPanelProps) {
   return (
     <div
       className={cn(
-        'relative flex-col justify-between bg-white p-8 text-gray-900 sm:p-12 dark:bg-white dark:text-gray-900',
+        'relative bg-white text-gray-900 dark:bg-white dark:text-gray-900',
         forceShowOnMobile
           ? 'flex min-h-[min(720px,100dvh)]'
-          : 'hidden min-h-[min(720px,100vh)] lg:flex',
+          : 'hidden min-h-[min(720px,100vh)] lg:block',
         props.className
       )}
     >
-      {showChrome ? (
-        <div className='relative z-20'>
-          <Link
-            to='/'
-            className='flex items-center gap-2 text-lg font-semibold text-gray-900'
-          >
-            <div className='relative h-8 w-8 shrink-0'>
-              {loading ? (
-                <Skeleton className='absolute inset-0 rounded-lg' />
-              ) : (
-                <img
-                  src={logo}
-                  alt={t('Logo')}
-                  width={32}
-                  height={32}
-                  className='rounded-lg border border-gray-200 bg-white p-1'
-                />
-              )}
-            </div>
-            {loading ? (
-              <Skeleton className='h-7 w-36' />
-            ) : (
-              <span>{systemName}</span>
-            )}
-          </Link>
-        </div>
-      ) : (
-        <div aria-hidden />
-      )}
-
       <div className='pointer-events-none absolute inset-0 z-10 flex min-w-0 items-center justify-center overflow-hidden px-4 py-20 sm:px-8'>
         <div
           className='scale-[0.55] sm:scale-75 md:scale-90 lg:scale-100'
@@ -99,38 +66,33 @@ export function AuthAnimationPanel(props: AuthAnimationPanelProps) {
         >
           <AnimatedCharacters
             isTyping={props.isTyping}
+            isPasswordFocused={props.isPasswordFocused}
             showPassword={props.showPassword}
             passwordLength={props.passwordLength}
           />
         </div>
       </div>
 
-      {showChrome ? (
-        showLegalLinks ? (
-          <div className='relative z-20 flex min-h-[2rem] flex-wrap items-center gap-4 text-sm text-gray-600 sm:gap-8 dark:text-gray-700'>
-            {hasUserAgreement ? (
-              <a
-                href='/user-agreement'
-                className='transition-colors hover:text-gray-900 dark:hover:text-black'
-              >
-                {t('User Agreement')}
-              </a>
-            ) : null}
-            {hasPrivacyPolicy ? (
-              <a
-                href='/privacy-policy'
-                className='transition-colors hover:text-gray-900 dark:hover:text-black'
-              >
-                {t('Privacy Policy')}
-              </a>
-            ) : null}
-          </div>
-        ) : (
-          <div aria-hidden />
-        )
-      ) : (
-        <div aria-hidden />
-      )}
+      {showChrome && showLegalLinks ? (
+        <div className='absolute bottom-8 left-8 z-20 flex min-h-[2rem] flex-wrap items-center gap-4 text-sm text-gray-600 sm:bottom-12 sm:left-12 sm:gap-8 dark:text-gray-700'>
+          {hasUserAgreement ? (
+            <a
+              href='/user-agreement'
+              className='transition-colors hover:text-gray-900 dark:hover:text-black'
+            >
+              {t('User Agreement')}
+            </a>
+          ) : null}
+          {hasPrivacyPolicy ? (
+            <a
+              href='/privacy-policy'
+              className='transition-colors hover:text-gray-900 dark:hover:text-black'
+            >
+              {t('Privacy Policy')}
+            </a>
+          ) : null}
+        </div>
+      ) : null}
     </div>
   )
 }
@@ -143,7 +105,8 @@ export function AuthAnimationSidebar() {
   return (
     <AuthAnimationPanel
       forceShowOnMobile={false}
-      isTyping={state.isTyping}
+      isTyping={state.focusedField === 'username'}
+      isPasswordFocused={state.focusedField === 'password'}
       showPassword={state.showPassword}
       passwordLength={state.passwordLength}
     />

@@ -16,7 +16,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import { useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { cn } from '@/lib/utils'
 import type { CarouselApi } from '@/components/ui/carousel'
@@ -24,8 +24,6 @@ import {
   Carousel,
   CarouselContent,
   CarouselItem,
-  CarouselNext,
-  CarouselPrevious,
 } from '@/components/ui/carousel'
 
 interface ModelCarouselProps {
@@ -36,6 +34,7 @@ export function ModelCarousel(props: ModelCarouselProps) {
   const { t } = useTranslation()
   const [api, setApi] = useState<CarouselApi>()
   const [selectedIndex, setSelectedIndex] = useState(0)
+  const autoplayTimerRef = useRef<number | null>(null)
 
   const slides = useMemo(
     () => [
@@ -90,20 +89,41 @@ export function ModelCarousel(props: ModelCarouselProps) {
     }
   }, [api])
 
+  const clearAutoplayTimer = useCallback(() => {
+    if (autoplayTimerRef.current === null) return
+    window.clearTimeout(autoplayTimerRef.current)
+    autoplayTimerRef.current = null
+  }, [])
+
+  const scheduleAutoplay = useCallback(() => {
+    clearAutoplayTimer()
+    if (!api || slides.length <= 1) return
+
+    autoplayTimerRef.current = window.setTimeout(() => {
+      api.scrollNext()
+    }, 5000)
+  }, [api, clearAutoplayTimer, slides.length])
+
   useEffect(() => {
     if (!api || slides.length <= 1) return
 
-    const intervalId = window.setInterval(() => {
-      if (api.canScrollNext()) {
-        api.scrollNext()
-        return
-      }
+    scheduleAutoplay()
+    api.on('select', scheduleAutoplay)
+    api.on('reInit', scheduleAutoplay)
 
-      api.scrollTo(0)
-    }, 4500)
+    return () => {
+      clearAutoplayTimer()
+      api.off('select', scheduleAutoplay)
+      api.off('reInit', scheduleAutoplay)
+    }
+  }, [api, clearAutoplayTimer, scheduleAutoplay, slides.length])
 
-    return () => window.clearInterval(intervalId)
-  }, [api, slides.length])
+  const handleIndicatorClick = (index: number) => {
+    if (!api) return
+    clearAutoplayTimer()
+    api.scrollTo(index)
+    scheduleAutoplay()
+  }
 
   return (
     <section className={cn('py-10 lg:py-14', props.className)}>
@@ -184,9 +204,6 @@ export function ModelCarousel(props: ModelCarouselProps) {
             )
           })}
         </CarouselContent>
-
-        <CarouselPrevious className='left-2 top-1/2 z-20 -translate-y-1/2 md:left-3' />
-        <CarouselNext className='right-2 top-1/2 z-20 -translate-y-1/2 md:right-3' />
       </Carousel>
 
       <div className='mt-5 flex items-center justify-center gap-2'>
@@ -194,7 +211,7 @@ export function ModelCarousel(props: ModelCarouselProps) {
           <button
             key={slide.id}
             type='button'
-            onClick={() => api?.scrollTo(index)}
+            onClick={() => handleIndicatorClick(index)}
             className={cn(
               'h-2.5 rounded-full transition-all',
               selectedIndex === index

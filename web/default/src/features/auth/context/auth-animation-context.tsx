@@ -25,14 +25,17 @@ import {
   type ReactNode,
 } from 'react'
 
+export type AuthAnimationFocusedField = 'username' | 'password' | null
+
 export type AuthAnimationState = {
-  isTyping: boolean
+  focusedField: AuthAnimationFocusedField
+  /** Password input plaintext is visible (eye toggle). */
   showPassword: boolean
   passwordLength: number
 }
 
 const defaultAuthAnimationState: AuthAnimationState = {
-  isTyping: false,
+  focusedField: null,
   showPassword: false,
   passwordLength: 0,
 }
