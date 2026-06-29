@@ -145,3 +145,27 @@ export function getDefaultFeatures(t: TFunction) {
     description: t(feature.description),
   }))
 }
+
+export const PROMO_POPUP_ITEMS = [
+  {
+    icon: 'Gift' as const,
+    title: 'First Recharge Bonus',
+    description: 'Get 1 million tokens on your first recharge',
+    linkType: 'recharge' as const,
+  },
+  {
+    icon: 'CreditCard' as const,
+    title: 'Full Recharge Bonus',
+    description:
+      'Receive exclusive rewards when a single recharge reaches the target',
+    linkType: 'recharge' as const,
+  },
+  {
+    icon: 'Ticket' as const,
+    title: 'More Limited-Time Offers',
+    description:
+      'Join our Telegram channel — be the first to receive event benefits',
+    href: 'https://t.me/+i_G3YGSV3zA0MDc1',
+    external: true,
+  },
+] as const

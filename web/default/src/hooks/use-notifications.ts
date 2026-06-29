@@ -63,6 +63,7 @@ function getAnnouncementKey(item: Record<string, unknown>): string {
  */
 export function useNotifications() {
   const [popoverOpen, setPopoverOpen] = useState(false)
+  const [dialogOpen, setDialogOpenState] = useState(false)
   const [activeTab, setActiveTab] = useState<'notice' | 'announcements'>(
     'notice'
   )
@@ -92,6 +93,7 @@ export function useNotifications() {
     markNoticeRead,
     markAnnouncementsRead,
     isAnnouncementRead,
+    setClosedUntilDate,
   } = useNotificationStore()
 
   // Extract notice content
@@ -127,18 +129,19 @@ export function useNotifications() {
     }
   }
 
-  // Handle popover open
-  const handleOpenPopover = (tab?: 'notice' | 'announcements') => {
-    const nextTab = tab || activeTab
-
-    // Mark currently visible content as read when opening the notification center
+  const markVisibleContentAsRead = (tab: 'notice' | 'announcements') => {
     if (noticeContent) {
       markNoticeRead(noticeContent)
     }
-    if (nextTab === 'announcements') {
+    if (tab === 'announcements') {
       markAnnouncementsAsRead()
     }
+  }
 
+  // Handle popover open
+  const handleOpenPopover = (tab?: 'notice' | 'announcements') => {
+    const nextTab = tab || activeTab
+    markVisibleContentAsRead(nextTab)
     setActiveTab(nextTab)
     setPopoverOpen(true)
   }
@@ -150,6 +153,27 @@ export function useNotifications() {
     }
 
     setPopoverOpen(false)
+  }
+
+  const handleOpenDialog = (tab?: 'notice' | 'announcements') => {
+    const nextTab = tab || activeTab
+    markVisibleContentAsRead(nextTab)
+    setActiveTab(nextTab)
+    setDialogOpenState(true)
+  }
+
+  const handleDialogOpenChange = (open: boolean) => {
+    if (open) {
+      handleOpenDialog(activeTab)
+      return
+    }
+
+    setDialogOpenState(false)
+  }
+
+  const closeToday = () => {
+    setClosedUntilDate(new Date().toDateString())
+    setDialogOpenState(false)
   }
 
   // Handle tab change - mark announcements as read when switching to that tab
@@ -178,9 +202,16 @@ export function useNotifications() {
     activeTab,
     setActiveTab: handleTabChange,
 
+    // Dialog state (public header)
+    dialogOpen,
+    setDialogOpen: handleDialogOpenChange,
+
     // Actions
     openPopover: handleOpenPopover,
     closePopover: () => setPopoverOpen(false),
+    openDialog: handleOpenDialog,
+    closeDialog: () => setDialogOpenState(false),
+    closeToday,
     refetchNotice,
   }
 }

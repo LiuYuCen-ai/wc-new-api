@@ -59,28 +59,23 @@ export function AffiliateRewardsCard({
 
   const hasRewards = (user?.aff_quota ?? 0) > 0
 
-  const rewardNotes = [
+  const invitationRebateNotes = [
+    t(
+      'Recharge rebate ratio: 5% (every friend recharge qualifies for rebate)'
+    ),
     t(
       'Invite friends to register. You will receive corresponding rewards after they add funds.'
     ),
     t(
       'Use the transfer function to move reward quota into your account balance.'
     ),
-    t('Invite more friends to earn more rewards.'),
+    t('Invite more friends to earn more promotion rewards.'),
   ]
 
-  const rechargeRules = [
-    t('Recharge rebate ratio: 10%'),
-    t("Recharge rebate count: your friend's first 3 top-ups"),
-  ]
-
-  const agentRules = [
-    t('Agent commission'),
-    t('Commission ratio: 5.0%'),
+  const agentDistributionNotes = [
     t(
-      'Subordinate accounts must be registered for 15 days before participating in commission calculation.'
+      'Upgrade to agent to earn long-term team revenue. Revenue is 150% of personal direct referral rebates, allowing you to build a promotion team for passive income.'
     ),
-    t('Each subordinate account has a monthly commission contribution limit.'),
   ]
 
   return (
@@ -179,41 +174,56 @@ export function AffiliateRewardsCard({
             </div>
           </div>
 
-          <div className='space-y-3 rounded-xl border p-4'>
-            <div className='text-sm font-semibold'>{t('Reward Rules')}</div>
-            <ul className='space-y-2 text-sm'>
-              {rewardNotes.map((note) => (
-                <li key={note} className='flex gap-2'>
-                  <span className='mt-2 size-1.5 shrink-0 rounded-full bg-emerald-500' />
-                  <span>{note}</span>
-                </li>
-              ))}
-            </ul>
-
-            <div className='rounded-lg bg-emerald-50 p-3 text-sm text-emerald-950 dark:bg-emerald-950/30 dark:text-emerald-100'>
-              <ul className='space-y-2'>
-                {rechargeRules.map((rule) => (
-                  <li key={rule} className='flex gap-2'>
+          <div className='space-y-4 rounded-xl border p-4'>
+            <div className='space-y-2'>
+              <div className='text-sm font-semibold'>
+                {t('Invitation Rebate')}
+              </div>
+              <div className='text-muted-foreground text-xs font-medium'>
+                {t('How rewards work')}
+              </div>
+              <ul className='space-y-2 text-sm'>
+                {invitationRebateNotes.map((note) => (
+                  <li key={note} className='flex gap-2'>
                     <span className='mt-2 size-1.5 shrink-0 rounded-full bg-emerald-500' />
-                    <span>{rule}</span>
+                    <span>{note}</span>
                   </li>
                 ))}
               </ul>
             </div>
 
-            <div className='rounded-lg bg-amber-50 p-3 text-sm text-amber-950 dark:bg-amber-950/30 dark:text-amber-100'>
-              <ul className='space-y-2'>
-                {agentRules.map((rule) => (
-                  <li key={rule} className='flex gap-2'>
+            <div className='space-y-2 border-t pt-4'>
+              <div className='text-sm font-semibold'>
+                {t('Agent distribution')}
+              </div>
+              <div className='text-muted-foreground text-xs font-medium'>
+                {t('Revenue description')}
+              </div>
+              <ul className='space-y-2 text-sm'>
+                {agentDistributionNotes.map((note) => (
+                  <li key={note} className='flex gap-2'>
                     <span className='mt-2 size-1.5 shrink-0 rounded-full bg-amber-500' />
-                    <span>{rule}</span>
+                    <span>{note}</span>
                   </li>
                 ))}
               </ul>
             </div>
 
-            <p className='text-muted-foreground text-xs'>
-              {t('View invited users and commission records')}
+            <div className='space-y-2 border-t pt-4'>
+              <div className='text-sm font-semibold'>
+                {t('Agent rules guide')}
+              </div>
+              <p className='text-muted-foreground text-sm'>
+                {t(
+                  'For complete agent tier structure, commission split ratios, settlement cycles, and revenue cap requirements, contact customer service to receive your exclusive agent rules manual.'
+                )}
+              </p>
+            </div>
+
+            <p className='text-muted-foreground border-t pt-3 text-xs'>
+              {t(
+                'Note: The platform reserves the right to adjust rebate rules and agent distribution rules based on actual operating conditions, with 7 days advance notice after public announcement.'
+              )}
             </p>
           </div>
 
