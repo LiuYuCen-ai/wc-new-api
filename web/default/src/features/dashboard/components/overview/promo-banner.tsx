@@ -46,6 +46,7 @@ export function PromoBanner() {
             description={t(item.description)}
             href={href}
             external={item.external}
+            className='bg-warning/10 hover:bg-warning/15 hover:border-warning/25'
           />
         )
       })}
