@@ -16,18 +16,19 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import { api } from '@/lib/api'
+import axios from 'axios'
+import { api, getCommonHeaders } from '@/lib/api'
+import { fetchActiveChatKey } from '@/features/chat/hooks/use-active-chat-key'
+import { API_ENDPOINTS } from '@/features/playground/constants'
 import type { PhotoModel, PhotoParams, PhotoResult } from './types'
 import { PHOTO_MODELS } from './constants'
 
-// Identify whether a model id is a Gemini family image model
 function isGeminiImage(model: string) {
   return model.startsWith('gemini-')
 }
 
 export type GeneratePhotoResponse = {
   images: PhotoResult[]
-  // Optional usage / billing debug info returned by backend (e.g. quota)
   usage?: {
     total_tokens?: number
     quota_used?: number
@@ -35,16 +36,9 @@ export type GeneratePhotoResponse = {
 }
 
 /**
- * Generate photos through the OpenAI /v1/images/generations endpoint.
- *
- * - For OpenAI family models (e.g. gpt-image-2) we send the standard
- *   OpenAI image generation payload.
- * - For Gemini image preview models we send a chat/completions request
- *   and instruct the backend to use google.image_config (aspect_ratio +
- *   image_size). The response is rendered as inline data URLs.
- *
- * All requests go through the existing relay pipeline so quota / billing
- * are applied automatically by the backend.
+ * Generate photos through existing relay APIs:
+ * - Gemini: /pg/chat/completions (session auth, same as Playground)
+ * - OpenAI image models: /v1/images/generations (Bearer API key)
  */
 export async function generatePhoto(
   params: PhotoParams
@@ -52,35 +46,45 @@ export async function generatePhoto(
   const model = PHOTO_MODELS.find((m) => m.id === params.model) as PhotoModel
 
   if (isGeminiImage(params.model)) {
-    return generateViaGeminiImage(params, model)
+    return generateViaChatCompletions(params)
   }
 
   return generateViaImagesApi(params, model)
+}
+
+async function postWithApiKey<T = unknown>(
+  path: string,
+  payload: Record<string, unknown>
+): Promise<T> {
+  const apiKey = await fetchActiveChatKey()
+  const res = await axios.post<T>(path, payload, {
+    headers: {
+      ...getCommonHeaders(),
+      Authorization: `Bearer ${apiKey}`,
+    },
+    withCredentials: true,
+  })
+  return res.data
 }
 
 async function generateViaImagesApi(
   params: PhotoParams,
   model: PhotoModel
 ): Promise<GeneratePhotoResponse> {
-  // The number of images is translated to N parallel upstream requests
-  // (each request always asks for 1 image), so we intentionally do NOT
-  // pass `n` to the backend. This makes the feature work consistently
-  // even with upstream channels that ignore or truncate `n`.
   const payload: Record<string, unknown> = {
     model: params.model,
     prompt: params.prompt,
+    n: clampCount(params.n),
     response_format: 'b64_json',
   }
 
   if (model.supportsSize && params.size) {
     payload.size = params.size
   }
-  if (model.supportsSize && params.resolution) {
-    payload.resolution = params.resolution
-  }
   if (model.supportsQuality && params.quality) {
     payload.quality = params.quality
   }
+
   const imageDataUrls = params.imageUrlEnabled
     ? params.imageDataUrls
         .map((img) => img.dataUrl?.trim())
@@ -90,103 +94,104 @@ async function generateViaImagesApi(
     payload.image =
       imageDataUrls.length === 1 ? imageDataUrls[0] : imageDataUrls
   }
-  const count = clampCount(params.n)
-  const responses = await Promise.all(
-    Array.from({ length: count }, () => api.post('/pg/images/generations', payload))
+
+  const data = await postWithApiKey<{ data?: unknown[] }>(
+    '/v1/images/generations',
+    payload
   )
+
+  const list = data?.data ?? []
   const images: PhotoResult[] = []
-  for (const res of responses) {
-    const data = res.data?.data ?? res.data ?? []
-    if (!Array.isArray(data)) continue
-    for (const item of data) {
+  if (Array.isArray(list)) {
+    for (const item of list) {
       if (!item || typeof item !== 'object') continue
-      const it = item as { b64_json?: string; url?: string; revised_prompt?: string }
+      const it = item as {
+        b64_json?: string
+        url?: string
+        revised_prompt?: string
+      }
       if (!it.b64_json && !it.url) continue
-      images.push({ b64: it.b64_json, url: it.url, revisedPrompt: it.revised_prompt })
+      images.push({
+        b64: it.b64_json,
+        url: it.url,
+        revisedPrompt: it.revised_prompt,
+      })
     }
   }
+
   return { images }
 }
 
-function clampCount(n: number | '' | undefined): number {
-  const v = Math.floor(Number(n || 1))
-  if (!Number.isFinite(v) || v < 1) return 1
-  return v
-}
-
-async function generateViaGeminiImage(
-  params: PhotoParams,
-  _model: PhotoModel
+async function generateViaChatCompletions(
+  params: PhotoParams
 ): Promise<GeneratePhotoResponse> {
-  // Gemini 图片生成使用专用接口 /pg/gemini/images/generations
-  // 后端会自动添加 responseModalities: ["TEXT", "IMAGE"]
-  
-  // 构建 parts 数组，包含文本提示词和可选的图片
-  const parts: Array<{ text?: string; inlineData?: { mimeType: string; data: string } }> = []
-  
-  // 如果启用了图片输入且有上传的图片，先添加图片
-  if (params.imageUrlEnabled && params.imageDataUrls && params.imageDataUrls.length > 0) {
+  const content: Array<
+    | { type: 'text'; text: string }
+    | { type: 'image_url'; image_url: { url: string } }
+  > = []
+
+  if (params.imageUrlEnabled && params.imageDataUrls.length > 0) {
     for (const img of params.imageDataUrls) {
-      // 解析 data URL，提取 mime type 和 base64 数据
-      const match = /^data:([^;]+);base64,(.*)$/.exec(img.dataUrl)
-      if (match) {
-        parts.push({
-          inlineData: {
-            mimeType: match[1],
-            data: match[2],
-          },
-        })
+      const url = img.dataUrl?.trim()
+      if (url) {
+        content.push({ type: 'image_url', image_url: { url } })
       }
     }
   }
-  
-  // 添加文本提示词
-  parts.push({
-    text: params.prompt,
-  })
-  
-  const payload: Record<string, unknown> = {
+
+  content.push({ type: 'text', text: params.prompt })
+
+  const payload = {
     model: params.model,
-    contents: [
+    stream: false,
+    messages: [
       {
-        role: 'user',
-        parts: parts,
+        role: 'user' as const,
+        content,
       },
     ],
-    generationConfig: {},
+    extra_body: {
+      google: {
+        image_config: {
+          aspect_ratio: params.aspectRatio,
+          image_size: params.imageSize,
+        },
+      },
+    },
   }
 
-  // 添加 aspect ratio 和 image size（如果模型支持）
-  if (params.aspectRatio) {
-    const imageConfig: Record<string, unknown> = {
-      aspectRatio: params.aspectRatio,
-    }
-    if (params.imageSize) {
-      imageConfig.imageSize = params.imageSize
-    }
-    ;(payload.generationConfig as Record<string, unknown>).imageConfig = imageConfig
-  }
+  const res = await api.post(API_ENDPOINTS.CHAT_COMPLETIONS, payload, {
+    skipErrorHandler: true,
+  } as Record<string, unknown>)
 
-  const res = await api.post('/pg/gemini/images/generations', payload)
-  
-  // 解析 Gemini 原生响应
-  const candidates = res.data?.candidates ?? []
+  return { images: parseGeminiImages(res.data) }
+}
+
+function parseGeminiImages(data: unknown): PhotoResult[] {
+  const message = (data as { choices?: Array<{ message?: { content?: unknown } }> })
+    ?.choices?.[0]?.message
+  const content = message?.content
   const images: PhotoResult[] = []
 
-  for (const candidate of candidates) {
-    const parts = candidate?.content?.parts ?? []
-    for (const part of parts) {
-      // 检查 inlineData 字段
-      if (part.inlineData && part.inlineData.data && part.inlineData.mimeType) {
-        images.push({
-          mimeType: part.inlineData.mimeType,
-          b64: part.inlineData.data,
-        })
-      }
+  if (Array.isArray(content)) {
+    for (const part of content) {
+      if (!part || typeof part !== 'object') continue
+      const url = (part as { image_url?: { url?: string } }).image_url?.url
+      if (typeof url !== 'string') continue
+      images.push(url.startsWith('data:') ? parseDataUrl(url) : { url })
+    }
+    return images
+  }
+
+  if (typeof content === 'string') {
+    const matches = content.match(/!\[[^\]]*\]\((data:[^)]+)\)/g) ?? []
+    for (const match of matches) {
+      const dataUrl = match.replace(/^!\[[^\]]*\]\(/, '').replace(/\)$/, '')
+      images.push(parseDataUrl(dataUrl))
     }
   }
 
-  return { images }
+  return images
 }
 
 function parseDataUrl(dataUrl: string): PhotoResult {
@@ -196,4 +201,11 @@ function parseDataUrl(dataUrl: string): PhotoResult {
     mimeType: match[1],
     b64: match[2],
   }
+}
+
+function clampCount(n: number | '' | undefined): number {
+  const v = Math.floor(Number(n || 1))
+  if (!Number.isFinite(v) || v < 1) return 1
+  if (v > 4) return 4
+  return v
 }

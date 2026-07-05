@@ -53,7 +53,16 @@ import { registerFormSchema } from '@/features/auth/constants'
 import { useAuthRedirect } from '@/features/auth/hooks/use-auth-redirect'
 import { useEmailVerification } from '@/features/auth/hooks/use-email-verification'
 import { useTurnstile } from '@/features/auth/hooks/use-turnstile'
-import { getAffiliateCode } from '@/features/auth/lib/storage'
+import {
+  getAffiliateCode,
+  saveAffiliateCode,
+} from '@/features/auth/lib/storage'
+
+function getInitialAffiliateCode(): string {
+  if (typeof window === 'undefined') return ''
+  const fromUrl = new URLSearchParams(window.location.search).get('aff')?.trim()
+  return fromUrl || getAffiliateCode()
+}
 
 export function SignUpForm({
   className,
@@ -94,6 +103,7 @@ export function SignUpForm({
       email: '',
       password: '',
       confirmPassword: '',
+      affCode: getInitialAffiliateCode(),
     },
   })
 
@@ -150,6 +160,11 @@ export function SignUpForm({
 
     if (!validateTurnstile()) return
 
+    const affCode = data.affCode?.trim()
+    if (affCode) {
+      saveAffiliateCode(affCode)
+    }
+
     setIsLoading(true)
     try {
       const res = await register({
@@ -157,7 +172,7 @@ export function SignUpForm({
         password: data.password,
         email: data.email || undefined,
         verification_code: verificationCode || undefined,
-        aff_code: getAffiliateCode(),
+        aff_code: affCode || undefined,
         turnstile: turnstileToken,
       })
 
@@ -265,6 +280,25 @@ export function SignUpForm({
               <FormLabel>{t('Confirm password')}</FormLabel>
               <FormControl>
                 <PasswordInput placeholder={t('Confirm password')} {...field} />
+              </FormControl>
+              <FormMessage />
+            </FormItem>
+          )}
+        />
+
+        {/* Invitation Code Field (optional) */}
+        <FormField
+          control={form.control}
+          name='affCode'
+          render={({ field }) => (
+            <FormItem>
+              <FormLabel>{t('Invitation code (optional)')}</FormLabel>
+              <FormControl>
+                <Input
+                  placeholder={t('Enter invitation code (optional)')}
+                  autoComplete='off'
+                  {...field}
+                />
               </FormControl>
               <FormMessage />
             </FormItem>

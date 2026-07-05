@@ -31,25 +31,26 @@ type AuthLayoutProps = {
 
 export function AuthLayout({ children, contentClassName }: AuthLayoutProps) {
   const { t } = useTranslation()
-  const { systemName, logo, loading } = useSystemConfig()
+  const { systemName, logo, loading, logoLoaded } = useSystemConfig()
 
   return (
     <AuthAnimationProvider>
       <div className='min-h-svh bg-white'>
         <Link
           to='/'
-          className='fixed top-4 left-4 z-30 flex items-center gap-2 text-lg font-semibold text-gray-900 transition-opacity hover:opacity-80 sm:top-8 sm:left-8'
+          className='fixed top-4 left-4 z-30 flex items-center gap-3 text-xl font-semibold text-gray-900 transition-opacity hover:opacity-80 sm:top-8 sm:left-8'
         >
-          <div className='relative h-8 w-8 shrink-0'>
+          <div className='relative size-16 shrink-0'>
             {loading ? (
               <Skeleton className='absolute inset-0 rounded-lg' />
             ) : (
               <img
                 src={logo}
                 alt={t('Logo')}
-                width={32}
-                height={32}
-                className='rounded-lg border border-gray-200 bg-white p-1'
+                className={cn(
+                  'size-full object-contain bg-transparent transition-opacity duration-200',
+                  logoLoaded ? 'opacity-100' : 'opacity-0'
+                )}
               />
             )}
           </div>

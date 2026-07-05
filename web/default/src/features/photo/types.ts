@@ -36,7 +36,21 @@ export type PhotoModel = {
   qualities?: PhotoQuality[]
 }
 
-export type PhotoAspectRatio = '1:1' | '16:9' | '9:16' | '4:3' | '3:4' | '21:9'
+export type PhotoAspectRatio =
+  | '1:1'
+  | '16:9'
+  | '9:16'
+  | '4:3'
+  | '3:4'
+  | '3:2'
+  | '2:3'
+  | '4:5'
+  | '5:4'
+  | '21:9'
+  | '4:1'
+  | '1:4'
+  | '8:1'
+  | '1:8'
 
 // Official GPT-Image-2 resolutions (per the public docs)
 export type PhotoResolution =
@@ -52,6 +66,8 @@ export type PhotoResolution =
 // OpenAI image quality levels
 export type PhotoQuality = 'low' | 'medium' | 'high' | 'auto'
 
+export type PhotoImageSize = '0.5K' | '1K' | '2K' | '4K'
+
 export type PhotoParams = {
   model: string
   prompt: string
@@ -60,7 +76,7 @@ export type PhotoParams = {
   resolution: '1K' | '2K' | '4K'
   quality: PhotoQuality
   aspectRatio: PhotoAspectRatio
-  imageSize: '1K' | '2K' | '4K'
+  imageSize: PhotoImageSize
   imageUrlEnabled: boolean
   imageDataUrls: { name: string; dataUrl: string }[]
 }

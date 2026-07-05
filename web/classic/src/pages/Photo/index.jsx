@@ -40,6 +40,11 @@ import {
 
 const { Title, Text } = Typography;
 
+const GEMINI_MODEL_IDS = {
+  BANANA_PRO: 'gemini-3-pro-image-preview',
+  BANANA_2: 'gemini-3.1-flash-image-preview',
+};
+
 const PHOTO_MODELS = [
   {
     id: 'gpt-image-2',
@@ -48,22 +53,91 @@ const PHOTO_MODELS = [
     type: 'openai',
   },
   {
-    id: 'gemini-3-pro-preview',
-    label: 'Gemini 3 Pro Preview',
-    description: 'Google 多模态生图（高质量）',
+    id: GEMINI_MODEL_IDS.BANANA_PRO,
+    label: 'Nano Banana Pro',
+    description: '工作室级高保真 · 10 种常规宽高比 · 最高 4K',
     type: 'gemini',
+    kind: 'bananaPro',
   },
   {
-    id: 'gemini-3.1-flash-image-preview',
-    label: 'Gemini 3.1 Flash Image Preview',
-    description: 'Google 多模态生图（高速）',
+    id: GEMINI_MODEL_IDS.BANANA_2,
+    label: 'Nano Banana 2',
+    description: 'Flash 高速 · 14 种宽高比含极致比例 · 0.5K–4K',
     type: 'gemini',
+    kind: 'banana2',
   },
 ];
 
-const ASPECT_RATIOS = ['1:1', '16:9', '9:16', '4:3', '3:4', '21:9'];
-const IMAGE_SIZES = ['1K', '2K', '4K'];
-const RESOLUTIONS = ['1024x1024', '1024x1536', '1536x1024', 'auto'];
+const GEMINI_CLASSIC_RATIOS = [
+  '1:1',
+  '16:9',
+  '9:16',
+  '4:3',
+  '3:4',
+  '3:2',
+  '2:3',
+  '4:5',
+  '5:4',
+  '21:9',
+];
+
+const GEMINI_ASPECT_RATIO_GROUPS = [
+  {
+    id: 'classic',
+    label: '常规宽高比',
+    models: ['bananaPro', 'banana2'],
+    items: [
+      { ratio: '1:1', label: '1:1 · 头像与社交贴图' },
+      { ratio: '16:9', label: '16:9 · 横屏壁纸与视频' },
+      { ratio: '9:16', label: '9:16 · 手机壁纸与短视频' },
+      { ratio: '4:3', label: '4:3 · 标准摄影与电商' },
+      { ratio: '3:4', label: '3:4 · 竖版商品主图' },
+      { ratio: '3:2', label: '3:2 · 单反画幅与印刷' },
+      { ratio: '2:3', label: '2:3 · 竖版摄影作品' },
+      { ratio: '4:5', label: '4:5 · 社交海报' },
+      { ratio: '5:4', label: '5:4 · 艺术微喷' },
+      { ratio: '21:9', label: '21:9 · 超宽电影画幅' },
+    ],
+  },
+  {
+    id: 'extreme',
+    label: '极致宽高比 · Banana 2 专属',
+    models: ['banana2'],
+    items: [
+      { ratio: '4:1', label: '4:1 · 横幅与横向漫画 [Banana 2]' },
+      { ratio: '1:4', label: '1:4 · 垂直信息流 [Banana 2]' },
+      { ratio: '8:1', label: '8:1 · 全景与舞台大屏 [Banana 2]' },
+      { ratio: '1:8', label: '1:8 · 狭长竖屏展示 [Banana 2]' },
+    ],
+  },
+];
+
+const GEMINI_IMAGE_SIZE_OPTIONS = [
+  { size: '0.5K', label: '0.5K · 512px 快速预览 [Banana 2]', models: ['banana2'] },
+  { size: '1K', label: '1K · 标准', models: ['bananaPro', 'banana2'] },
+  { size: '2K', label: '2K · 高清', models: ['bananaPro', 'banana2'] },
+  { size: '4K', label: '4K · 极致细节', models: ['bananaPro', 'banana2'] },
+];
+const RESOLUTION_TIERS = ['1K', '2K', '4K'];
+const RESOLUTION_SIZE_MAP = {
+  // 1K – 标准 / 社交媒体
+  '1K': [
+    { size: 'auto', label: 'Auto（自动）' },
+    { size: '1024x1024', label: '1024×1024（正方形）' },
+    { size: '1024x1536', label: '1024×1536（竖版）' },
+    { size: '1536x1024', label: '1536×1024（横版）' },
+  ],
+  // 2K – 高清壁纸 / 设计稿
+  '2K': [
+    { size: '2048x2048', label: '2048×2048（正方形）' },
+    { size: '2048x1152', label: '2048×1152（16:9 宽屏）' },
+  ],
+  // 4K – 极致细节 / 影视素材
+  '4K': [
+    { size: '3840x2160', label: '3840×2160（4K 横屏）' },
+    { size: '2160x3840', label: '2160×3840（4K 竖屏）' },
+  ],
+};
 
 const isGemini = (id) => id.startsWith('gemini-');
 
@@ -73,6 +147,7 @@ const Photo = () => {
   const [model, setModel] = useState(PHOTO_MODELS[0].id);
   const [prompt, setPrompt] = useState('');
   const [n, setN] = useState(1);
+  const [resolution, setResolution] = useState('1K');
   const [size, setSize] = useState('1024x1024');
   const [aspectRatio, setAspectRatio] = useState('1:1');
   const [imageSize, setImageSize] = useState('1K');
@@ -83,6 +158,71 @@ const Photo = () => {
     () => PHOTO_MODELS.find((m) => m.id === model) ?? PHOTO_MODELS[0],
     [model]
   );
+
+  const geminiKind = selected.kind ?? null;
+
+  const geminiAspectGroups = useMemo(() => {
+    const extremeOnly = geminiKind === 'banana2';
+    return GEMINI_ASPECT_RATIO_GROUPS.map((group) => ({
+      ...group,
+      items: group.items
+        .filter(() => group.models.includes(geminiKind))
+        .filter((item) => extremeOnly || group.id === 'classic'),
+    })).filter((group) => group.items.length > 0);
+  }, [geminiKind]);
+
+  const geminiImageSizes = useMemo(
+    () =>
+      GEMINI_IMAGE_SIZE_OPTIONS.filter((item) =>
+        item.models.includes(geminiKind)
+      ),
+    [geminiKind]
+  );
+
+  const handleImageSizeChange = (nextSize) => {
+    setImageSize(nextSize);
+    const allowedRatios = GEMINI_ASPECT_RATIO_GROUPS.flatMap((group) =>
+      group.models.includes(geminiKind) &&
+      (geminiKind === 'banana2' || group.id === 'classic')
+        ? group.items
+        : []
+    ).map((item) => item.ratio);
+    setAspectRatio((prev) =>
+      allowedRatios.includes(prev) ? prev : allowedRatios[0] ?? '1:1'
+    );
+  };
+
+  const handleModelChange = (nextModel) => {
+    setModel(nextModel);
+    const nextSelected = PHOTO_MODELS.find((m) => m.id === nextModel);
+    if (!nextSelected?.kind) return;
+    const allowedRatios = GEMINI_ASPECT_RATIO_GROUPS.flatMap((group) =>
+      group.models.includes(nextSelected.kind) &&
+      (nextSelected.kind === 'banana2' || group.id === 'classic')
+        ? group.items
+        : []
+    ).map((item) => item.ratio);
+    setAspectRatio((prev) =>
+      allowedRatios.includes(prev) ? prev : allowedRatios[0] ?? '1:1'
+    );
+    const allowedSizes = GEMINI_IMAGE_SIZE_OPTIONS.filter((item) =>
+      item.models.includes(nextSelected.kind)
+    ).map((item) => item.size);
+    setImageSize((prev) =>
+      allowedSizes.includes(prev) ? prev : allowedSizes[0] ?? '1K'
+    );
+  };
+
+  const sizeOptions = useMemo(
+    () => RESOLUTION_SIZE_MAP[resolution] ?? RESOLUTION_SIZE_MAP['1K'],
+    [resolution]
+  );
+
+  const handleResolutionChange = (tier) => {
+    setResolution(tier);
+    const sizes = (RESOLUTION_SIZE_MAP[tier] ?? []).map((item) => item.size);
+    setSize((prev) => (sizes.includes(prev) ? prev : sizes[0]));
+  };
 
   const handleSubmit = async () => {
     if (!prompt.trim()) {
@@ -152,7 +292,7 @@ const Photo = () => {
             <Form.Item label='模型'>
               <Select
                 value={model}
-                onChange={setModel}
+                onChange={handleModelChange}
                 style={{ width: '100%' }}
               >
                 {PHOTO_MODELS.map((m) => (
@@ -189,15 +329,28 @@ const Photo = () => {
                     style={{ width: '100%' }}
                   />
                 </Form.Item>
-                <Form.Item label='分辨率'>
+                <Form.Item label='清晰度'>
+                  <Select
+                    value={resolution}
+                    onChange={handleResolutionChange}
+                    style={{ width: '100%' }}
+                  >
+                    {RESOLUTION_TIERS.map((tier) => (
+                      <Select.Option key={tier} value={tier}>
+                        {tier}
+                      </Select.Option>
+                    ))}
+                  </Select>
+                </Form.Item>
+                <Form.Item label='尺寸'>
                   <Select
                     value={size}
                     onChange={setSize}
                     style={{ width: '100%' }}
                   >
-                    {RESOLUTIONS.map((r) => (
-                      <Select.Option key={r} value={r}>
-                        {r}
+                    {sizeOptions.map((item) => (
+                      <Select.Option key={item.size} value={item.size}>
+                        {item.label}
                       </Select.Option>
                     ))}
                   </Select>
@@ -205,29 +358,33 @@ const Photo = () => {
               </>
             ) : (
               <>
+                <Form.Item label='图片尺寸'>
+                  <Select
+                    value={imageSize}
+                    onChange={handleImageSizeChange}
+                    style={{ width: '100%' }}
+                  >
+                    {geminiImageSizes.map((item) => (
+                      <Select.Option key={item.size} value={item.size}>
+                        {item.label}
+                      </Select.Option>
+                    ))}
+                  </Select>
+                </Form.Item>
                 <Form.Item label='比例'>
                   <Select
                     value={aspectRatio}
                     onChange={setAspectRatio}
                     style={{ width: '100%' }}
                   >
-                    {ASPECT_RATIOS.map((a) => (
-                      <Select.Option key={a} value={a}>
-                        {a}
-                      </Select.Option>
-                    ))}
-                  </Select>
-                </Form.Item>
-                <Form.Item label='图片尺寸'>
-                  <Select
-                    value={imageSize}
-                    onChange={setImageSize}
-                    style={{ width: '100%' }}
-                  >
-                    {IMAGE_SIZES.map((s) => (
-                      <Select.Option key={s} value={s}>
-                        {s}
-                      </Select.Option>
+                    {geminiAspectGroups.map((group) => (
+                      <Select.OptGroup key={group.id} label={group.label}>
+                        {group.items.map((item) => (
+                          <Select.Option key={item.ratio} value={item.ratio}>
+                            {item.label}
+                          </Select.Option>
+                        ))}
+                      </Select.OptGroup>
                     ))}
                   </Select>
                 </Form.Item>

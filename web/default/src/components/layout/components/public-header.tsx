@@ -205,7 +205,12 @@ export function PublicHeader(props: PublicHeaderProps) {
                 isHomeHero ? 'text-white' : 'text-foreground'
               )}
             >
-              <div className='flex size-7 shrink-0 items-center justify-center transition-all duration-300 group-hover:scale-105 group-hover:rotate-3'>
+              <div
+                className={cn(
+                  'flex shrink-0 items-center justify-center transition-all duration-300 group-hover:scale-105 group-hover:rotate-3',
+                  scrolled ? 'size-10' : 'size-12'
+                )}
+              >
                 {loading ? (
                   <Skeleton className='size-full rounded-lg' />
                 ) : customLogo ? (
