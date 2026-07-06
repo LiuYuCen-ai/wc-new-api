@@ -87,3 +87,8 @@ export type PhotoResult = {
   mimeType?: string
   revisedPrompt?: string
 }
+
+export type PhotoGenerationSnapshot = Pick<
+  PhotoParams,
+  'size' | 'resolution' | 'quality' | 'aspectRatio' | 'imageSize'
+>

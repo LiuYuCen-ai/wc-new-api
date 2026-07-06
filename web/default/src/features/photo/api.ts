@@ -16,9 +16,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import axios from 'axios'
-import { api, getCommonHeaders } from '@/lib/api'
-import { fetchActiveChatKey } from '@/features/chat/hooks/use-active-chat-key'
+import { api } from '@/lib/api'
 import { API_ENDPOINTS } from '@/features/playground/constants'
 import type { PhotoModel, PhotoParams, PhotoResult } from './types'
 import { PHOTO_MODELS } from './constants'
@@ -38,7 +36,7 @@ export type GeneratePhotoResponse = {
 /**
  * Generate photos through existing relay APIs:
  * - Gemini: /pg/chat/completions (session auth, same as Playground)
- * - OpenAI image models: /v1/images/generations (Bearer API key)
+ * - OpenAI image models: /pg/images/generations or /pg/images/edits (session auth)
  */
 export async function generatePhoto(
   params: PhotoParams
@@ -52,25 +50,51 @@ export async function generatePhoto(
   return generateViaImagesApi(params, model)
 }
 
-async function postWithApiKey<T = unknown>(
-  path: string,
-  payload: Record<string, unknown>
-): Promise<T> {
-  const apiKey = await fetchActiveChatKey()
-  const res = await axios.post<T>(path, payload, {
-    headers: {
-      ...getCommonHeaders(),
-      Authorization: `Bearer ${apiKey}`,
-    },
-    withCredentials: true,
-  })
-  return res.data
+function getImageInputUrls(params: PhotoParams): string[] {
+  if (!params.imageUrlEnabled) return []
+  return params.imageDataUrls
+    .map((img) => img.dataUrl?.trim())
+    .filter((url): url is string => Boolean(url))
+}
+
+function extractApiErrorMessage(data: unknown): string | undefined {
+  if (!data || typeof data !== 'object') return undefined
+  const record = data as {
+    error?: { message?: string }
+    message?: string
+  }
+  return record.error?.message ?? record.message
+}
+
+function parseOpenAIImageList(data: unknown): PhotoResult[] {
+  const list = (data as { data?: unknown[] })?.data ?? []
+  const images: PhotoResult[] = []
+  if (!Array.isArray(list)) return images
+
+  for (const item of list) {
+    if (!item || typeof item !== 'object') continue
+    const it = item as {
+      b64_json?: string
+      url?: string
+      revised_prompt?: string
+    }
+    if (!it.b64_json && !it.url) continue
+    images.push({
+      b64: it.b64_json,
+      url: it.url,
+      revisedPrompt: it.revised_prompt,
+    })
+  }
+  return images
 }
 
 async function generateViaImagesApi(
   params: PhotoParams,
   model: PhotoModel
 ): Promise<GeneratePhotoResponse> {
+  const imageInputUrls = getImageInputUrls(params)
+  const isImageToImage = imageInputUrls.length > 0
+
   const payload: Record<string, unknown> = {
     model: params.model,
     prompt: params.prompt,
@@ -78,45 +102,37 @@ async function generateViaImagesApi(
     response_format: 'b64_json',
   }
 
-  if (model.supportsSize && params.size) {
+  if (model.supportsSize && params.size && params.size !== 'auto') {
     payload.size = params.size
   }
   if (model.supportsQuality && params.quality) {
     payload.quality = params.quality
   }
 
-  const imageDataUrls = params.imageUrlEnabled
-    ? params.imageDataUrls
-        .map((img) => img.dataUrl?.trim())
-        .filter((url): url is string => Boolean(url))
-    : []
-  if (imageDataUrls.length > 0) {
+  if (isImageToImage) {
     payload.image =
-      imageDataUrls.length === 1 ? imageDataUrls[0] : imageDataUrls
+      imageInputUrls.length === 1 ? imageInputUrls[0] : imageInputUrls
   }
 
-  const data = await postWithApiKey<{ data?: unknown[] }>(
-    '/v1/images/generations',
-    payload
-  )
+  const endpoint = isImageToImage
+    ? API_ENDPOINTS.IMAGE_EDITS
+    : API_ENDPOINTS.IMAGE_GENERATIONS
 
-  const list = data?.data ?? []
-  const images: PhotoResult[] = []
-  if (Array.isArray(list)) {
-    for (const item of list) {
-      if (!item || typeof item !== 'object') continue
-      const it = item as {
-        b64_json?: string
-        url?: string
-        revised_prompt?: string
-      }
-      if (!it.b64_json && !it.url) continue
-      images.push({
-        b64: it.b64_json,
-        url: it.url,
-        revisedPrompt: it.revised_prompt,
-      })
-    }
+  const res = await api.post(endpoint, payload, {
+    skipErrorHandler: true,
+  } as Record<string, unknown>)
+
+  const errorMessage = extractApiErrorMessage(res.data)
+  if (errorMessage) {
+    throw new Error(errorMessage)
+  }
+
+  const images = parseOpenAIImageList(res.data)
+  if (images.length === 0) {
+    throw new Error(
+      extractApiErrorMessage(res.data) ??
+        'The image API returned an empty result. Check that the model channel is configured and supports image editing.'
+    )
   }
 
   return { images }
@@ -130,13 +146,9 @@ async function generateViaChatCompletions(
     | { type: 'image_url'; image_url: { url: string } }
   > = []
 
-  if (params.imageUrlEnabled && params.imageDataUrls.length > 0) {
-    for (const img of params.imageDataUrls) {
-      const url = img.dataUrl?.trim()
-      if (url) {
-        content.push({ type: 'image_url', image_url: { url } })
-      }
-    }
+  const imageInputUrls = getImageInputUrls(params)
+  for (const url of imageInputUrls) {
+    content.push({ type: 'image_url', image_url: { url } })
   }
 
   content.push({ type: 'text', text: params.prompt })
@@ -164,7 +176,19 @@ async function generateViaChatCompletions(
     skipErrorHandler: true,
   } as Record<string, unknown>)
 
-  return { images: parseGeminiImages(res.data) }
+  const errorMessage = extractApiErrorMessage(res.data)
+  if (errorMessage) {
+    throw new Error(errorMessage)
+  }
+
+  const images = parseGeminiImages(res.data)
+  if (images.length === 0) {
+    throw new Error(
+      'The model returned no images. Try adjusting the prompt or image size.'
+    )
+  }
+
+  return { images }
 }
 
 function parseGeminiImages(data: unknown): PhotoResult[] {
@@ -176,18 +200,33 @@ function parseGeminiImages(data: unknown): PhotoResult[] {
   if (Array.isArray(content)) {
     for (const part of content) {
       if (!part || typeof part !== 'object') continue
-      const url = (part as { image_url?: { url?: string } }).image_url?.url
-      if (typeof url !== 'string') continue
-      images.push(url.startsWith('data:') ? parseDataUrl(url) : { url })
+      const record = part as {
+        type?: string
+        image_url?: { url?: string }
+        inline_data?: { mime_type?: string; data?: string }
+      }
+      const imageUrl = record.image_url?.url
+      if (typeof imageUrl === 'string') {
+        images.push(
+          imageUrl.startsWith('data:') ? parseDataUrl(imageUrl) : { url: imageUrl }
+        )
+        continue
+      }
+      if (record.inline_data?.data) {
+        images.push({
+          mimeType: record.inline_data.mime_type ?? 'image/png',
+          b64: record.inline_data.data,
+        })
+      }
     }
     return images
   }
 
   if (typeof content === 'string') {
-    const matches = content.match(/!\[[^\]]*\]\((data:[^)]+)\)/g) ?? []
+    const matches = content.match(/!\[[^\]]*\]\(([^)]+)\)/g) ?? []
     for (const match of matches) {
-      const dataUrl = match.replace(/^!\[[^\]]*\]\(/, '').replace(/\)$/, '')
-      images.push(parseDataUrl(dataUrl))
+      const url = match.replace(/^!\[[^\]]*\]\(/, '').replace(/\)$/, '')
+      images.push(url.startsWith('data:') ? parseDataUrl(url) : { url })
     }
   }
 

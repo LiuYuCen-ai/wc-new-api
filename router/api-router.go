@@ -119,6 +119,9 @@ func SetApiRouter(router *gin.Engine) {
 				selfRoute.GET("/checkin", controller.GetCheckinStatus)
 				selfRoute.POST("/checkin", middleware.TurnstileCheck(), controller.DoCheckin)
 
+				// Photo generation history
+				registerPhotoHistoryRoutes(selfRoute.Group("/photo"))
+
 				// Custom OAuth bindings
 				selfRoute.GET("/oauth/bindings", controller.GetUserOAuthBindings)
 				selfRoute.DELETE("/oauth/bindings/:provider_id", controller.UnbindCustomOAuth)
@@ -146,6 +149,10 @@ func SetApiRouter(router *gin.Engine) {
 				adminRoute.DELETE("/:id/2fa", controller.AdminDisable2FA)
 			}
 		}
+
+		photoHistoryRoute := apiRouter.Group("/photo")
+		photoHistoryRoute.Use(middleware.UserAuth())
+		registerPhotoHistoryRoutes(photoHistoryRoute)
 
 		// Subscription billing (plans, purchase, admin management)
 		subscriptionRoute := apiRouter.Group("/subscription")
@@ -375,4 +382,12 @@ func SetApiRouter(router *gin.Engine) {
 			deploymentsRoute.DELETE("/:id", controller.DeleteDeployment)
 		}
 	}
+}
+
+func registerPhotoHistoryRoutes(group *gin.RouterGroup) {
+	group.GET("/history", controller.GetPhotoHistory)
+	group.POST("/history", controller.CreatePhotoHistory)
+	group.POST("/history/:id/images", controller.AppendPhotoHistoryImages)
+	group.DELETE("/history/:id", controller.DeletePhotoHistory)
+	group.GET("/images/:imageId", controller.GetPhotoHistoryImage)
 }

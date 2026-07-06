@@ -36,6 +36,12 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog'
 import { useAuthStore } from '@/stores/auth-store'
+import {
+  usePhotoFormGenerating,
+  usePhotoGenerationStore,
+  usePhotoPendingDisplayCount,
+  type PhotoPreviewState,
+} from '@/stores/photo-generation-store'
 import { cn } from '@/lib/utils'
 import {
   buildGeminiAspectRatioGroups,
@@ -50,41 +56,55 @@ import {
   RESOLUTIONS,
   RESOLUTION_SIZE_MAP,
 } from './constants'
-import { generatePhoto } from './api'
+import { PhotoImageMagnifier } from './components/photo-image-magnifier'
+import type { PhotoHistoryItem } from './lib/photo-history-api'
+import { getPhotoResultSrc, pickGenerationSnapshot } from './lib/photo-utils'
 import type {
   PhotoAspectRatio,
+  PhotoGenerationSnapshot,
   PhotoImageSize,
   PhotoParams,
   PhotoQuality,
   PhotoResolution,
-  PhotoResult,
 } from './types'
 
-interface HistoryItem {
+export type { PhotoGenerationSnapshot } from './types'
+
+type PhotoPreviewItem = {
   id: string
-  prompt: string
-  model: string
-  created_at: string
-  images: PhotoResult[]
+  src?: string
+  loading?: boolean
 }
 
-type PhotoPreviewState = {
-  src: string
-  prompt?: string
-  model?: string
-  createdAt?: string
-  images?: string[]
-  currentIndex?: number
+function buildPreviewItemsFromHistoryItem(item: PhotoHistoryItem): PhotoPreviewItem[] {
+  return item.images
+    .map(getPhotoResultSrc)
+    .filter(Boolean)
+    .map((src, idx) => ({
+      id: `${item.id}-${idx}`,
+      src,
+    }))
 }
 
-function getPhotoResultSrc(image: PhotoResult): string {
-  if (image.b64 && image.mimeType) {
-    return `data:${image.mimeType};base64,${image.b64}`
-  }
-  if (image.b64) {
-    return `data:image/png;base64,${image.b64}`
-  }
-  return image.url ?? ''
+function mergePreviewWithLoadingItems(
+  loadingItems: PhotoPreviewItem[],
+  historyItems: PhotoPreviewItem[]
+): PhotoPreviewItem[] {
+  if (loadingItems.length === 0) return historyItems
+  const historySrcs = new Set(
+    historyItems.map((item) => item.src).filter(Boolean)
+  )
+  const uniqueLoading = loadingItems.filter(
+    (item) => !item.src || !historySrcs.has(item.src)
+  )
+  return [...uniqueLoading, ...historyItems]
+}
+
+function getPreviewCurrentItem(
+  preview: PhotoPreviewState | null
+): PhotoPreviewItem | null {
+  if (!preview?.items.length) return null
+  return preview.items[preview.currentIndex] ?? preview.items[0] ?? null
 }
 
 function downloadPhotoSrc(src: string, filename: string) {
@@ -93,6 +113,25 @@ function downloadPhotoSrc(src: string, filename: string) {
   a.href = src
   a.download = filename
   a.click()
+}
+
+function srcToImageDataEntry(
+  src: string,
+  name = 'reference.png'
+): { name: string; dataUrl: string } {
+  return { name, dataUrl: src }
+}
+
+function appendImageDataEntry(
+  current: { name: string; dataUrl: string }[],
+  entry: { name: string; dataUrl: string }
+): { name: string; dataUrl: string }[] {
+  const exists = current.some((item) => item.dataUrl === entry.dataUrl)
+  if (exists) return current
+  if (current.length >= MAX_UPLOAD_IMAGES) {
+    return [...current.slice(1), entry]
+  }
+  return [...current, entry]
 }
 
 const DEFAULT_PARAMS: PhotoParams = {
@@ -109,53 +148,31 @@ const DEFAULT_PARAMS: PhotoParams = {
 }
 
 const MAX_UPLOAD_IMAGES = 6
-const PHOTO_HISTORY_LIMIT = 50
-const LEGACY_PHOTO_HISTORY_KEY = 'photo_history'
-
-function getPhotoHistoryStorageKey(userId?: number | null) {
-  if (userId == null) return `${LEGACY_PHOTO_HISTORY_KEY}_guest`
-  return `${LEGACY_PHOTO_HISTORY_KEY}_${userId}`
-}
-
-function loadPhotoHistory(userId?: number | null): HistoryItem[] {
-  if (userId == null) return []
-
-  try {
-    const storageKey = getPhotoHistoryStorageKey(userId)
-    const legacy = localStorage.getItem(LEGACY_PHOTO_HISTORY_KEY)
-    if (!localStorage.getItem(storageKey) && legacy) {
-      localStorage.setItem(storageKey, legacy)
-    }
-
-    const stored = localStorage.getItem(storageKey)
-    if (!stored) return []
-
-    const parsed = JSON.parse(stored) as unknown
-    return Array.isArray(parsed) ? (parsed as HistoryItem[]) : []
-  } catch {
-    return []
-  }
-}
-
-function persistPhotoHistoryItem(
-  userId: number,
-  item: HistoryItem
-): HistoryItem[] {
-  const storageKey = getPhotoHistoryStorageKey(userId)
-  const history = loadPhotoHistory(userId)
-  const next = [item, ...history].slice(0, PHOTO_HISTORY_LIMIT)
-  localStorage.setItem(storageKey, JSON.stringify(next))
-  return next
-}
 
 export function Photo() {
   const { t } = useTranslation()
   const navigate = useNavigate()
   const user = useAuthStore((state) => state.auth.user)
   const [params, setParams] = useState<PhotoParams>(DEFAULT_PARAMS)
-  const [loading, setLoading] = useState(false)
-  const [history, setHistory] = useState<HistoryItem[]>([])
-  const [preview, setPreview] = useState<PhotoPreviewState | null>(null)
+  const history = usePhotoGenerationStore((state) => state.history)
+  const historyLoading = usePhotoGenerationStore((state) => state.historyLoading)
+  const preview = usePhotoGenerationStore((state) => state.preview)
+  const previewGenerating = usePhotoGenerationStore(
+    (state) => state.previewGenerating
+  )
+  const formLoading = usePhotoFormGenerating()
+  const pendingDisplayCount = usePhotoPendingDisplayCount()
+  const loadHistory = usePhotoGenerationStore((state) => state.loadHistory)
+  const resetForUser = usePhotoGenerationStore((state) => state.resetForUser)
+  const setPreview = usePhotoGenerationStore((state) => state.setPreview)
+  const updatePreview = usePhotoGenerationStore((state) => state.updatePreview)
+  const runFormGeneration = usePhotoGenerationStore(
+    (state) => state.runFormGeneration
+  )
+  const runPreviewGeneration = usePhotoGenerationStore(
+    (state) => state.runPreviewGeneration
+  )
+  const paramsFormRef = useRef<HTMLFormElement | null>(null)
 
   const selectedModel = useMemo(
     () => PHOTO_MODELS.find((m) => m.id === params.model) ?? PHOTO_MODELS[0],
@@ -250,34 +267,80 @@ export function Photo() {
 
   useEffect(() => {
     if (!user?.id) {
-      setHistory([])
+      resetForUser()
       return
     }
-    setHistory(loadPhotoHistory(user.id))
-  }, [user?.id])
 
-  const openPreview = (state: PhotoPreviewState) => {
-    setPreview(state)
-  }
+    void loadHistory(user.id)
+  }, [loadHistory, resetForUser, user?.id])
 
-  const handlePreviewNavigate = (direction: -1 | 1) => {
-    setPreview((current) => {
+  useEffect(() => {
+    const historyItemId = preview?.historyItemId
+    if (!historyItemId) return
+
+    const historyItem = history.find((item) => item.id === historyItemId)
+    if (!historyItem) return
+
+    const historyItems = buildPreviewItemsFromHistoryItem(historyItem)
+    updatePreview((current) => {
+      if (!current || current.historyItemId !== historyItemId) return current
+      const loadingItems = current.items.filter((item) => item.loading)
+      const merged = mergePreviewWithLoadingItems(loadingItems, historyItems)
       if (
-        !current?.images?.length ||
-        current.currentIndex === undefined ||
-        current.currentIndex === null
+        merged.length === current.items.length &&
+        merged.every(
+          (item, index) =>
+            item.id === current.items[index]?.id &&
+            item.src === current.items[index]?.src &&
+            item.loading === current.items[index]?.loading
+        )
       ) {
         return current
       }
+      const currentSrc = current.items[current.currentIndex]?.src
+      const nextIndex = currentSrc
+        ? Math.max(
+            0,
+            merged.findIndex((item) => item.src === currentSrc)
+          )
+        : current.currentIndex
+      return {
+        ...current,
+        items: merged,
+        currentIndex: nextIndex >= 0 ? nextIndex : 0,
+        prompt: historyItem.prompt,
+        model: historyItem.model,
+      }
+    })
+  }, [history, preview?.historyItemId, updatePreview])
+
+  const openPreview = (state: PhotoPreviewState) => {
+    setPreview(state)
+    setParams((prev) => ({
+      ...prev,
+      ...(state.model ? { model: state.model as PhotoParams['model'] } : {}),
+      ...(state.generationParams ?? {}),
+    }))
+  }
+
+  const handlePreviewNavigate = (direction: -1 | 1) => {
+    updatePreview((current) => {
+      if (!current?.items.length) return current
       const nextIndex = current.currentIndex + direction
-      if (nextIndex < 0 || nextIndex >= current.images.length) {
+      if (nextIndex < 0 || nextIndex >= current.items.length) {
         return current
       }
       return {
         ...current,
         currentIndex: nextIndex,
-        src: current.images[nextIndex] ?? current.src,
       }
+    })
+  }
+
+  const selectPreviewIndex = (index: number) => {
+    updatePreview((current) => {
+      if (!current || index < 0 || index >= current.items.length) return current
+      return { ...current, currentIndex: index }
     })
   }
 
@@ -373,6 +436,10 @@ export function Photo() {
 
   const handleSubmit = async (e?: React.FormEvent) => {
     e?.preventDefault()
+    await runGeneration(params)
+  }
+
+  const runGeneration = async (generationParams: PhotoParams) => {
     if (!user) {
       navigate({
         to: '/sign-in',
@@ -382,41 +449,75 @@ export function Photo() {
       })
       return
     }
-    if (!params.prompt.trim()) {
+    if (!generationParams.prompt.trim()) {
       toast.error(t('Please enter a prompt'))
       return
     }
-    setLoading(true)
-    try {
-      const res = await generatePhoto(params)
-      if (!res.images || res.images.length === 0) {
-        toast.warning(t('No images returned'))
-      } else {
-        toast.success(
-          t('Generated {{count}} image(s)', { count: res.images.length })
-        )
+    await runFormGeneration(generationParams, user.id)
+  }
 
-        if (user?.id) {
-          const nextHistory = persistPhotoHistoryItem(user.id, {
-            id: Date.now().toString(),
-            prompt: params.prompt,
-            model: params.model,
-            created_at: new Date().toISOString(),
-            images: res.images,
-          })
-          setHistory(nextHistory)
-        }
-      }
-    } catch (err) {
-      const message =
-        (err as { response?: { data?: { error?: { message?: string } } } })
-          ?.response?.data?.error?.message ??
-        (err as Error).message ??
-        t('Generation failed')
-      toast.error(message)
-    } finally {
-      setLoading(false)
+  const handleImageToImage = async ({
+    src,
+    prompt,
+    model,
+    mode,
+  }: {
+    src: string
+    prompt: string
+    model: string
+    mode: 'add' | 'generate'
+  }) => {
+    if (!user) {
+      navigate({
+        to: '/sign-in',
+        search: {
+          redirect: `${window.location.pathname}${window.location.search}`,
+        },
+      })
+      return
     }
+
+    const trimmedPrompt = prompt.trim()
+    if (mode === 'generate' && !trimmedPrompt) {
+      toast.error(t('Please enter a prompt'))
+      return
+    }
+
+    const entry = srcToImageDataEntry(src)
+    const existingHistoryItemId = preview?.historyItemId
+    const generationModel =
+      model || preview?.model || params.model
+    const nextParams: PhotoParams = {
+      ...params,
+      model: generationModel,
+      prompt: trimmedPrompt || params.prompt,
+      imageUrlEnabled: true,
+      imageDataUrls:
+        mode === 'generate'
+          ? [entry]
+          : appendImageDataEntry(params.imageDataUrls, entry),
+    }
+    setParams(nextParams)
+
+    if (mode === 'add') {
+      setPreview(null)
+      toast.success(t('Image added to image input'))
+      paramsFormRef.current?.scrollIntoView({
+        behavior: 'smooth',
+        block: 'start',
+      })
+      return
+    }
+
+    void runPreviewGeneration({
+      params: nextParams,
+      userId: user.id,
+      trimmedPrompt,
+      generationModel,
+      existingHistoryItemId,
+      previewBase: preview,
+      referenceSrc: src,
+    })
   }
 
   return (
@@ -443,6 +544,7 @@ export function Photo() {
             <Card className='h-fit lg:sticky lg:top-24'>
               <CardContent className='space-y-4 p-5'>
                 <form
+                  ref={paramsFormRef}
                   onSubmit={handleSubmit}
                   className='space-y-4'
                   aria-label='photo-params'
@@ -885,10 +987,10 @@ export function Photo() {
 
                   <Button
                     type='submit'
-                    disabled={loading}
+                    disabled={formLoading}
                     className='w-full'
                   >
-                    {loading ? (
+                    {formLoading ? (
                       <>
                         <Loader2 className='mr-2 h-4 w-4 animate-spin' />
                         {t('Generating...')}
@@ -920,17 +1022,36 @@ export function Photo() {
               </div>
 
               <CardContent className='min-h-0 flex-1 overflow-y-auto p-4 sm:p-5'>
-                {loading ? (
-                  <PhotoSkeletonGrid count={params.n} />
-                ) : !user ? (
+                {!user ? (
                   <EmptyState
                     isGemini={isGemini}
                     message={t('Sign in to save and view your generation history.')}
                   />
-                ) : history.length === 0 ? (
-                  <EmptyState isGemini={isGemini} />
                 ) : (
-                  <HistoryFeed history={history} onPreview={openPreview} />
+                  <div className='space-y-3'>
+                    {historyLoading ? (
+                      <PhotoPendingGrid count={3} />
+                    ) : null}
+                    {formLoading ? (
+                      <PhotoPendingGrid count={pendingDisplayCount} />
+                    ) : null}
+                    {!historyLoading &&
+                    history.filter(
+                      (item) =>
+                        item.status !== 'pending' || item.images.length > 0
+                    ).length === 0 &&
+                    !formLoading ? (
+                      <EmptyState isGemini={isGemini} />
+                    ) : history.length > 0 ? (
+                      <HistoryFeed
+                        history={history.filter(
+                          (item) =>
+                            item.status !== 'pending' || item.images.length > 0
+                        )}
+                        onPreview={openPreview}
+                      />
+                    ) : null}
+                  </div>
                 )}
               </CardContent>
             </Card>
@@ -940,10 +1061,37 @@ export function Photo() {
         <PhotoImagePreviewDialog
           open={Boolean(preview)}
           onOpenChange={(open) => {
-            if (!open) setPreview(null)
+            if (!open && !previewGenerating) setPreview(null)
           }}
           preview={preview}
           onNavigate={handlePreviewNavigate}
+          onSelectIndex={selectPreviewIndex}
+          onModelChange={(model) => {
+            updatePreview((current) =>
+              current ? { ...current, model } : current
+            )
+            setParams((prev) => ({
+              ...prev,
+              model: model as PhotoParams['model'],
+            }))
+          }}
+          params={params}
+          onParamsChange={(patch) => {
+            setParams((prev) => {
+              const next = { ...prev, ...patch }
+              updatePreview((current) =>
+                current
+                  ? {
+                      ...current,
+                      generationParams: pickGenerationSnapshot(next),
+                    }
+                  : current
+              )
+              return next
+            })
+          }}
+          onImageToImage={handleImageToImage}
+          generating={previewGenerating}
         />
       </PageTransition>
     </PublicLayout>
@@ -981,11 +1129,23 @@ function EmptyState({
   )
 }
 
-function PhotoSkeletonGrid({ count }: { count: number }) {
+function PhotoPendingGrid({ count }: { count: number }) {
+  const { t } = useTranslation()
   return (
     <div className='grid grid-cols-3 gap-2 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-4 xl:grid-cols-6'>
       {Array.from({ length: Math.max(1, Number(count) || 1) }).map((_, i) => (
-        <Skeleton key={i} className='aspect-square w-full rounded-lg' />
+        <div
+          key={`pending-${i}`}
+          className='bg-muted relative aspect-square overflow-hidden rounded-lg ring-1 ring-foreground/10'
+        >
+          <Skeleton className='h-full w-full rounded-lg' />
+          <div className='absolute inset-0 flex flex-col items-center justify-center gap-1 bg-background/35'>
+            <Loader2 className='text-primary h-5 w-5 animate-spin' />
+            <span className='text-muted-foreground text-[10px]'>
+              {t('Generating...')}
+            </span>
+          </div>
+        </div>
       ))}
     </div>
   )
@@ -993,15 +1153,17 @@ function PhotoSkeletonGrid({ count }: { count: number }) {
 
 type HistoryImageEntry = {
   id: string
+  historyItemId: string
   src: string
   prompt: string
   model: string
   createdAt: string
   imageIndex: number
   imageSources: string[]
+  generationParams?: PhotoGenerationSnapshot
 }
 
-function flattenHistoryImages(history: HistoryItem[]): HistoryImageEntry[] {
+function flattenHistoryImages(history: PhotoHistoryItem[]): HistoryImageEntry[] {
   return history.flatMap((item) => {
     const imageSources = item.images.map(getPhotoResultSrc).filter(Boolean)
     return item.images.flatMap((img, idx) => {
@@ -1010,12 +1172,14 @@ function flattenHistoryImages(history: HistoryItem[]): HistoryImageEntry[] {
       return [
         {
           id: `${item.id}-${idx}`,
+          historyItemId: item.id,
           src,
           prompt: item.prompt,
           model: item.model,
           createdAt: item.created_at,
           imageIndex: idx,
           imageSources,
+          generationParams: item.generationParams,
         },
       ]
     })
@@ -1026,7 +1190,7 @@ function HistoryFeed({
   history,
   onPreview,
 }: {
-  history: HistoryItem[]
+  history: PhotoHistoryItem[]
   onPreview: (state: PhotoPreviewState) => void
 }) {
   const { t } = useTranslation()
@@ -1040,11 +1204,15 @@ function HistoryFeed({
           type='button'
           onClick={() =>
             onPreview({
-              src: entry.src,
               prompt: entry.prompt,
               model: entry.model,
               createdAt: entry.createdAt,
-              images: entry.imageSources,
+              historyItemId: entry.historyItemId,
+              generationParams: entry.generationParams,
+              items: entry.imageSources.map((src, idx) => ({
+                id: `${entry.historyItemId}-${idx}`,
+                src,
+              })),
               currentIndex: entry.imageIndex,
             })
           }
@@ -1071,42 +1239,446 @@ function HistoryFeed({
   )
 }
 
+function PhotoPreviewModelPicker({
+  modelId,
+  disabled,
+  onChange,
+}: {
+  modelId: string
+  disabled?: boolean
+  onChange: (modelId: string) => void
+}) {
+  const { t } = useTranslation()
+  const gptModels = PHOTO_MODELS.filter((m) => m.id.startsWith('gpt-'))
+  const geminiModels = PHOTO_MODELS.filter((m) => m.id.startsWith('gemini-'))
+  const isGemini = modelId.startsWith('gemini-')
+  const activeModels = isGemini ? geminiModels : gptModels
+
+  return (
+    <div className='space-y-2'>
+      <Label>{t('Model')}</Label>
+      <p className='text-muted-foreground text-xs'>
+        {t('Uses the model from this generation by default. You can change it before generating.')}
+      </p>
+      <div className='bg-muted/60 rounded-lg p-1'>
+        <div className='grid grid-cols-2 gap-1'>
+          <button
+            type='button'
+            disabled={disabled}
+            onClick={() => onChange(gptModels[0].id)}
+            className={cn(
+              'rounded-md px-2.5 py-1.5 text-xs font-semibold transition-all',
+              !isGemini
+                ? 'bg-background text-foreground shadow-sm ring-1 ring-border/60'
+                : 'text-muted-foreground hover:text-foreground'
+            )}
+          >
+            GPT
+          </button>
+          <button
+            type='button'
+            disabled={disabled}
+            onClick={() => onChange(geminiModels[0].id)}
+            className={cn(
+              'rounded-md px-2.5 py-1.5 text-xs font-semibold transition-all',
+              isGemini
+                ? 'bg-background text-foreground shadow-sm ring-1 ring-border/60'
+                : 'text-muted-foreground hover:text-foreground'
+            )}
+          >
+            Gemini
+          </button>
+        </div>
+      </div>
+      <div className='grid gap-1.5 sm:grid-cols-2'>
+        {activeModels.map((model) => {
+          const isSelected = model.id === modelId
+          return (
+            <button
+              key={model.id}
+              type='button'
+              disabled={disabled}
+              onClick={() => onChange(model.id)}
+              className={cn(
+                'flex items-start gap-2 rounded-md border px-2.5 py-2 text-left transition-colors',
+                isSelected
+                  ? 'border-primary bg-primary/5 ring-1 ring-primary/25'
+                  : 'border-border bg-muted/20 hover:border-muted-foreground/25 hover:bg-muted/50'
+              )}
+            >
+              <div className='min-w-0 flex-1'>
+                <span className='block text-xs font-medium leading-snug'>
+                  {t(model.label)}
+                </span>
+              </div>
+              {isSelected ? (
+                <Check className='text-primary mt-0.5 h-3.5 w-3.5 shrink-0' />
+              ) : null}
+            </button>
+          )
+        })}
+      </div>
+    </div>
+  )
+}
+
+function PhotoPreviewSizePicker({
+  modelId,
+  params,
+  disabled,
+  onParamsChange,
+}: {
+  modelId: string
+  params: PhotoParams
+  disabled?: boolean
+  onParamsChange: (patch: Partial<PhotoParams>) => void
+}) {
+  const { t } = useTranslation()
+  const selectedModel =
+    PHOTO_MODELS.find((m) => m.id === modelId) ?? PHOTO_MODELS[0]
+  const isGemini = modelId.startsWith('gemini-')
+  const nanoBananaKind = getNanoBananaKind(modelId)
+
+  const gptSizeGroups = useMemo(
+    () => buildGptSizeGroups(params.resolution),
+    [params.resolution]
+  )
+
+  const geminiImageSizeOptions = useMemo(
+    () =>
+      GEMINI_IMAGE_SIZE_OPTIONS.filter(
+        (item) =>
+          (selectedModel.imageSizes?.includes(item.size) ?? true) &&
+          isGeminiOptionAvailable(item.exclusiveTo, nanoBananaKind)
+      ),
+    [selectedModel.imageSizes, nanoBananaKind]
+  )
+
+  const geminiAspectRatioGroups = useMemo(
+    () => buildGeminiAspectRatioGroups(nanoBananaKind, params.imageSize),
+    [nanoBananaKind, params.imageSize]
+  )
+
+  const updateResolution = (tier: '1K' | '2K' | '4K') => {
+    const sizes = RESOLUTION_SIZE_MAP[tier].map((opt) => opt.size)
+    const nextSize = sizes.includes(params.size)
+      ? params.size
+      : (sizes[0] as PhotoResolution)
+    onParamsChange({ resolution: tier, size: nextSize })
+  }
+
+  const updateGeminiImageSize = (size: PhotoImageSize) => {
+    if (!nanoBananaKind) {
+      onParamsChange({ imageSize: size })
+      return
+    }
+    const allowedRatios = getGeminiAspectRatiosForSize(nanoBananaKind, size)
+    const nextAspectRatio = allowedRatios.includes(params.aspectRatio)
+      ? params.aspectRatio
+      : (allowedRatios[0] ?? '1:1')
+    onParamsChange({
+      imageSize: size,
+      aspectRatio: nextAspectRatio as PhotoAspectRatio,
+    })
+  }
+
+  if (!selectedModel.supportsSize && !isGemini) {
+    return null
+  }
+
+  return (
+    <div className='space-y-3'>
+      <div className='space-y-1'>
+        <Label>{t('Image size')}</Label>
+        <p className='text-muted-foreground text-xs'>
+          {t('Adjust output size and aspect ratio before generating.')}
+        </p>
+      </div>
+
+      {selectedModel.supportsSize ? (
+        <>
+          <div className='grid grid-cols-3 gap-1.5'>
+            {GPT_IMAGE_SIZE_OPTIONS.map((item) => {
+              const isSelected = params.resolution === item.size
+              return (
+                <button
+                  key={item.size}
+                  type='button'
+                  disabled={disabled}
+                  onClick={() =>
+                    updateResolution(item.size as '1K' | '2K' | '4K')
+                  }
+                  className={cn(
+                    'flex flex-col items-start gap-0.5 rounded-md border px-2 py-1.5 text-left transition-colors',
+                    isSelected
+                      ? 'border-primary bg-primary text-primary-foreground shadow-sm'
+                      : 'border-border bg-background text-foreground hover:bg-muted/60'
+                  )}
+                >
+                  <span className='text-xs font-medium'>{item.size}</span>
+                  <span
+                    className={cn(
+                      'text-[10px] leading-snug',
+                      isSelected
+                        ? 'text-primary-foreground/75'
+                        : 'text-muted-foreground'
+                    )}
+                  >
+                    {t(item.hint)}
+                  </span>
+                </button>
+              )
+            })}
+          </div>
+
+          <div className='space-y-2'>
+            <Label className='text-xs'>{t('Aspect ratio')}</Label>
+            {gptSizeGroups.map((group) => (
+              <div key={group.id} className='space-y-1.5'>
+                <p className='text-muted-foreground text-[11px] font-medium'>
+                  {t(group.label)}
+                </p>
+                <div className='grid grid-cols-2 gap-1.5 sm:grid-cols-3'>
+                  {group.items.map((item) => {
+                    const isSelected = params.size === item.size
+                    return (
+                      <button
+                        key={item.size}
+                        type='button'
+                        disabled={disabled}
+                        onClick={() =>
+                          onParamsChange({
+                            size: item.size as PhotoResolution,
+                          })
+                        }
+                        className={cn(
+                          'flex flex-col items-start gap-0.5 rounded-md border px-2 py-1.5 text-left transition-colors',
+                          isSelected
+                            ? 'border-primary bg-primary text-primary-foreground shadow-sm'
+                            : 'border-border bg-background text-foreground hover:bg-muted/60'
+                        )}
+                      >
+                        <span className='text-xs font-medium'>
+                          {item.ratio === 'Auto' ? t('Auto') : item.ratio}
+                        </span>
+                        <span
+                          className={cn(
+                            'text-[10px] leading-snug',
+                            isSelected
+                              ? 'text-primary-foreground/75'
+                              : 'text-muted-foreground'
+                          )}
+                        >
+                          {item.resolution}
+                        </span>
+                      </button>
+                    )
+                  })}
+                </div>
+              </div>
+            ))}
+          </div>
+
+          {selectedModel.supportsQuality ? (
+            <div className='space-y-1.5'>
+              <Label className='text-xs'>{t('Quality')}</Label>
+              <div className='grid grid-cols-4 gap-1.5'>
+                {QUALITIES.map((q) => {
+                  const isSelected = params.quality === q
+                  return (
+                    <button
+                      key={q}
+                      type='button'
+                      disabled={disabled}
+                      onClick={() =>
+                        onParamsChange({ quality: q as PhotoQuality })
+                      }
+                      className={cn(
+                        'rounded-md border px-2 py-1.5 text-[11px] font-medium transition-colors',
+                        isSelected
+                          ? 'border-primary bg-primary text-primary-foreground shadow-sm'
+                          : 'border-border bg-background text-foreground hover:bg-muted/60'
+                      )}
+                    >
+                      {q}
+                    </button>
+                  )
+                })}
+              </div>
+            </div>
+          ) : null}
+        </>
+      ) : (
+        <>
+          <div
+            className={cn(
+              'grid gap-1.5',
+              geminiImageSizeOptions.length > 3
+                ? 'grid-cols-2'
+                : 'grid-cols-3'
+            )}
+          >
+            {geminiImageSizeOptions.map((item) => {
+              const isSelected = params.imageSize === item.size
+              return (
+                <button
+                  key={item.size}
+                  type='button'
+                  disabled={disabled}
+                  onClick={() => updateGeminiImageSize(item.size)}
+                  className={cn(
+                    'flex flex-col items-start gap-0.5 rounded-md border px-2 py-1.5 text-left transition-colors',
+                    isSelected
+                      ? 'border-primary bg-primary text-primary-foreground shadow-sm'
+                      : 'border-border bg-background text-foreground hover:bg-muted/60'
+                  )}
+                >
+                  <span className='text-xs font-medium'>{item.size}</span>
+                  <span
+                    className={cn(
+                      'text-[10px] leading-snug',
+                      isSelected
+                        ? 'text-primary-foreground/75'
+                        : 'text-muted-foreground'
+                    )}
+                  >
+                    {t(item.hint)}
+                  </span>
+                </button>
+              )
+            })}
+          </div>
+
+          <div className='space-y-2'>
+            <Label className='text-xs'>{t('Aspect ratio')}</Label>
+            {geminiAspectRatioGroups.length > 0 ? (
+              geminiAspectRatioGroups.map((group) => (
+                <div key={group.id} className='space-y-1.5'>
+                  <p className='text-muted-foreground text-[11px] font-medium'>
+                    {t(group.label)}
+                  </p>
+                  <div className='grid grid-cols-2 gap-1.5 sm:grid-cols-3'>
+                    {group.items.map((item) => {
+                      const isSelected = params.aspectRatio === item.ratio
+                      return (
+                        <button
+                          key={item.ratio}
+                          type='button'
+                          disabled={disabled}
+                          onClick={() =>
+                            onParamsChange({
+                              aspectRatio: item.ratio as PhotoAspectRatio,
+                            })
+                          }
+                          className={cn(
+                            'flex flex-col items-start gap-0.5 rounded-md border px-2 py-1.5 text-left transition-colors',
+                            isSelected
+                              ? 'border-primary bg-primary text-primary-foreground shadow-sm'
+                              : 'border-border bg-background text-foreground hover:bg-muted/60'
+                          )}
+                        >
+                          <span className='text-xs font-medium'>
+                            {item.ratio}
+                          </span>
+                          <span
+                            className={cn(
+                              'text-[10px] leading-snug',
+                              isSelected
+                                ? 'text-primary-foreground/75'
+                                : 'text-muted-foreground'
+                            )}
+                          >
+                            {item.resolution}
+                          </span>
+                        </button>
+                      )
+                    })}
+                  </div>
+                </div>
+              ))
+            ) : (
+              <p className='text-muted-foreground text-xs'>
+                {t('Select an image size to view aspect ratio options.')}
+              </p>
+            )}
+          </div>
+        </>
+      )}
+    </div>
+  )
+}
+
 function PhotoImagePreviewDialog({
   open,
   onOpenChange,
   preview,
   onNavigate,
+  onSelectIndex,
+  onModelChange,
+  params,
+  onParamsChange,
+  onImageToImage,
+  generating,
 }: {
   open: boolean
   onOpenChange: (open: boolean) => void
   preview: PhotoPreviewState | null
   onNavigate: (direction: -1 | 1) => void
+  onSelectIndex: (index: number) => void
+  onModelChange: (modelId: string) => void
+  params: PhotoParams
+  onParamsChange: (patch: Partial<PhotoParams>) => void
+  onImageToImage: (options: {
+    src: string
+    prompt: string
+    model: string
+    mode: 'add' | 'generate'
+  }) => void | Promise<void>
+  generating: boolean
 }) {
   const { t } = useTranslation()
+  const [editPrompt, setEditPrompt] = useState('')
+  const [dialogModel, setDialogModel] = useState(PHOTO_MODELS[0].id)
 
-  if (!preview?.src) {
+  useEffect(() => {
+    if (!open) return
+    setEditPrompt(preview?.prompt ?? '')
+    const fallbackModel = preview?.model ?? PHOTO_MODELS[0].id
+    const resolvedModel = PHOTO_MODELS.some((m) => m.id === fallbackModel)
+      ? fallbackModel
+      : PHOTO_MODELS[0].id
+    setDialogModel(resolvedModel)
+  }, [open, preview?.prompt, preview?.model, preview?.currentIndex])
+
+  const handleModelChange = (modelId: string) => {
+    setDialogModel(modelId)
+    onModelChange(modelId)
+  }
+
+  const currentItem = getPreviewCurrentItem(preview)
+  const items = preview?.items ?? []
+  const currentIndex = preview?.currentIndex ?? 0
+  const showRail = items.length > 0
+
+  if (!preview || !currentItem) {
     return null
   }
 
-  const hasMultiple = (preview.images?.length ?? 0) > 1
-  const currentIndex = preview.currentIndex ?? 0
-  const canGoPrev = hasMultiple && currentIndex > 0
-  const canGoNext =
-    hasMultiple &&
-    preview.images != null &&
-    currentIndex < preview.images.length - 1
+  const canGoPrev = !showRail && currentIndex > 0
+  const canGoNext = !showRail && currentIndex < items.length - 1
   const filename = `photo-${Date.now()}-${currentIndex + 1}.png`
+  const canGenerate = editPrompt.trim().length > 0 && !generating
+  const referenceSrc =
+    currentItem.src && !currentItem.loading
+      ? currentItem.src
+      : items.find((item) => item.src && !item.loading)?.src
+  const editSource = referenceSrc ?? ''
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className='flex max-h-[92vh] w-[min(96vw,56rem)] max-w-[96vw] flex-col gap-0 overflow-hidden p-0 sm:max-w-4xl'>
-        <DialogHeader className='space-y-3 border-b px-4 py-4 sm:px-6'>
+      <DialogContent className='flex max-h-[92vh] w-[min(96vw,60rem)] max-w-[96vw] flex-col gap-0 overflow-hidden p-0 sm:max-w-5xl'>
+        <DialogHeader className='space-y-2 border-b px-4 py-4 sm:px-6'>
           <DialogTitle>{t('Image preview')}</DialogTitle>
-          {preview.prompt ? (
-            <p className='text-muted-foreground text-sm leading-6'>
-              {preview.prompt}
-            </p>
-          ) : null}
           {(preview.model || preview.createdAt) && (
             <div className='text-muted-foreground flex flex-wrap items-center gap-2 text-xs'>
               {preview.model ? <span>{preview.model}</span> : null}
@@ -1114,12 +1686,11 @@ function PhotoImagePreviewDialog({
               {preview.createdAt ? (
                 <span>{new Date(preview.createdAt).toLocaleString()}</span>
               ) : null}
-              {hasMultiple ? (
+              {items.length > 0 ? (
                 <>
                   <span>•</span>
                   <span>
-                    {t('Image {{n}}', { n: currentIndex + 1 })} /{' '}
-                    {preview.images?.length}
+                    {t('Image {{n}}', { n: currentIndex + 1 })} / {items.length}
                   </span>
                 </>
               ) : null}
@@ -1127,48 +1698,189 @@ function PhotoImagePreviewDialog({
           )}
         </DialogHeader>
 
-        <div className='bg-muted/40 relative flex min-h-[280px] flex-1 items-center justify-center px-4 py-4 sm:min-h-[420px] sm:px-8'>
-          {canGoPrev ? (
-            <Button
-              type='button'
-              variant='secondary'
-              size='icon'
-              className='absolute top-1/2 left-2 z-10 -translate-y-1/2 sm:left-4'
-              onClick={() => onNavigate(-1)}
-              aria-label={t('Previous image')}
-            >
-              <ChevronLeft className='h-5 w-5' />
-            </Button>
-          ) : null}
+        <div className='flex min-h-0 flex-1 overflow-hidden'>
+          <div className='bg-muted/40 relative flex min-h-[240px] min-w-0 flex-1 items-center justify-center px-4 py-4 sm:min-h-[360px] sm:px-6'>
+            {canGoPrev ? (
+              <Button
+                type='button'
+                variant='secondary'
+                size='icon'
+                className='absolute top-1/2 left-2 z-10 -translate-y-1/2 sm:left-4'
+                onClick={() => onNavigate(-1)}
+                aria-label={t('Previous image')}
+              >
+                <ChevronLeft className='h-5 w-5' />
+              </Button>
+            ) : null}
 
-          <img
-            src={preview.src}
-            alt={t('Image preview')}
-            className='max-h-[58vh] w-full object-contain'
-          />
+            {currentItem.loading ? (
+              <div className='flex flex-col items-center justify-center gap-3 py-10'>
+                <Loader2 className='text-primary h-10 w-10 animate-spin' />
+                <p className='text-muted-foreground text-sm'>
+                  {t('Generating image...')}
+                </p>
+              </div>
+            ) : currentItem.src ? (
+              <PhotoImageMagnifier
+                key={`${currentItem.id}-${currentIndex}`}
+                src={currentItem.src}
+                alt={t('Image preview')}
+              />
+            ) : null}
 
-          {canGoNext ? (
-            <Button
-              type='button'
-              variant='secondary'
-              size='icon'
-              className='absolute top-1/2 right-2 z-10 -translate-y-1/2 sm:right-4'
-              onClick={() => onNavigate(1)}
-              aria-label={t('Next image')}
-            >
-              <ChevronRight className='h-5 w-5' />
-            </Button>
+            {canGoNext ? (
+              <Button
+                type='button'
+                variant='secondary'
+                size='icon'
+                className='absolute top-1/2 right-2 z-10 -translate-y-1/2 sm:right-4'
+                onClick={() => onNavigate(1)}
+                aria-label={t('Next image')}
+              >
+                <ChevronRight className='h-5 w-5' />
+              </Button>
+            ) : null}
+          </div>
+
+          {showRail ? (
+            <div className='bg-background flex w-[104px] shrink-0 flex-col gap-2 overflow-y-auto border-l p-2 sm:w-[120px]'>
+              <p className='text-muted-foreground px-1 text-[11px] font-medium'>
+                {t('Images in this generation')}
+              </p>
+              {items.map((item, index) => {
+                const isSelected = index === currentIndex
+                return (
+                  <button
+                    key={item.id}
+                    type='button'
+                    onClick={() => onSelectIndex(index)}
+                    className={cn(
+                      'relative aspect-square overflow-hidden rounded-md border transition-colors',
+                      isSelected
+                        ? 'border-primary ring-2 ring-primary/30'
+                        : 'border-border hover:border-primary/50'
+                    )}
+                    aria-label={t('Image {{n}}', { n: index + 1 })}
+                    aria-current={isSelected ? 'true' : undefined}
+                  >
+                    {item.loading ? (
+                      <div className='bg-muted flex h-full w-full flex-col items-center justify-center gap-1'>
+                        <Loader2 className='text-primary h-4 w-4 animate-spin' />
+                        <span className='text-muted-foreground text-[9px] leading-none'>
+                          {t('Generating...')}
+                        </span>
+                      </div>
+                    ) : item.src ? (
+                      <img
+                        src={item.src}
+                        alt=''
+                        className='h-full w-full object-cover'
+                      />
+                    ) : (
+                      <div className='bg-muted h-full w-full' />
+                    )}
+                  </button>
+                )
+              })}
+            </div>
           ) : null}
         </div>
 
-        <div className='flex items-center justify-end gap-2 border-t px-4 py-4 sm:px-6'>
-          <Button
-            variant='outline'
-            onClick={() => downloadPhotoSrc(preview.src, filename)}
-          >
-            <Download className='mr-2 h-4 w-4' />
-            {t('Download')}
-          </Button>
+        <div className='max-h-[42vh] space-y-3 overflow-y-auto border-t px-4 py-4 sm:px-6'>
+          <PhotoPreviewModelPicker
+            modelId={dialogModel}
+            disabled={generating}
+            onChange={handleModelChange}
+          />
+
+          <PhotoPreviewSizePicker
+            modelId={dialogModel}
+            params={params}
+            disabled={generating}
+            onParamsChange={onParamsChange}
+          />
+
+          <div className='space-y-2'>
+            <div className='flex items-center gap-2'>
+              <ImagePlus className='text-primary h-4 w-4' />
+              <Label htmlFor='photo-img2img-prompt'>{t('Image to image')}</Label>
+            </div>
+            <p className='text-muted-foreground text-xs leading-relaxed'>
+              {t(
+                'Describe how you want to transform this image. The current image will be used as reference input.'
+              )}
+            </p>
+            <Textarea
+              id='photo-img2img-prompt'
+              rows={3}
+              value={editPrompt}
+              onChange={(e) => setEditPrompt(e.target.value)}
+              placeholder={t('Image to image prompt placeholder')}
+              disabled={generating}
+            />
+          </div>
+
+          <div className='flex flex-col-reverse gap-2 sm:flex-row sm:items-center sm:justify-between'>
+            <Button
+              type='button'
+              variant='ghost'
+              size='sm'
+              className='text-muted-foreground justify-start px-0 sm:px-2'
+              disabled={generating || !editSource}
+              onClick={() => {
+                if (!editSource) return
+                onImageToImage({
+                  src: editSource,
+                  prompt: editPrompt,
+                  model: dialogModel,
+                  mode: 'add',
+                })
+              }}
+            >
+              <Plus className='mr-2 h-4 w-4' />
+              {t('Add to image input')}
+            </Button>
+
+            <div className='flex flex-wrap justify-end gap-2'>
+              <Button
+                type='button'
+                variant='outline'
+                disabled={generating || !currentItem.src || currentItem.loading}
+                onClick={() => {
+                  if (!currentItem.src) return
+                  downloadPhotoSrc(currentItem.src, filename)
+                }}
+              >
+                <Download className='mr-2 h-4 w-4' />
+                {t('Download')}
+              </Button>
+              <Button
+                type='button'
+                disabled={!canGenerate || !editSource}
+                onClick={() => {
+                  if (!editSource) return
+                  onImageToImage({
+                    src: editSource,
+                    prompt: editPrompt,
+                    model: dialogModel,
+                    mode: 'generate',
+                  })
+                }}
+              >
+                {generating ? (
+                  <>
+                    <Loader2 className='mr-2 h-4 w-4 animate-spin' />
+                    {t('Generating...')}
+                  </>
+                ) : (
+                  <>
+                    <Wand2 className='mr-2 h-4 w-4' />
+                    {t('Generate from image')}
+                  </>
+                )}
+              </Button>
+            </div>
+          </div>
         </div>
       </DialogContent>
     </Dialog>
