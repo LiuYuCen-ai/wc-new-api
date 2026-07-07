@@ -17,9 +17,10 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 import * as React from 'react'
-import { Eye, EyeClosed } from 'lucide-react'
+import { Eye, EyeOff } from 'lucide-react'
 import { t } from 'i18next'
 import { cn } from '@/lib/utils'
+
 import { Button } from './ui/button'
 import { Input } from './ui/input'
 
@@ -80,7 +81,7 @@ export function PasswordInput({
         {showPassword ? (
           <Eye size={18} aria-hidden='true' />
         ) : (
-          <EyeClosed size={18} aria-hidden='true' />
+          <EyeOff size={18} aria-hidden='true' />
         )}
         </Button>
       </div>

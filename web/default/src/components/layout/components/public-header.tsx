@@ -16,28 +16,22 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import { useCallback, useEffect, useState } from 'react'
 import { Link, useNavigate, useRouterState } from '@tanstack/react-router'
+import { useCallback, useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { useAuthStore } from '@/stores/auth-store'
-import { cn } from '@/lib/utils'
+
+import { Dialog } from '@/components/dialog'
+import { LanguageSwitcher } from '@/components/language-switcher'
+import { NotificationPopover } from '@/components/notification-popover'
+import { ProfileDropdown } from '@/components/profile-dropdown'
+import { Button } from '@/components/ui/button'
+import { Skeleton } from '@/components/ui/skeleton'
 import { useNotifications } from '@/hooks/use-notifications'
 import { useSystemConfig } from '@/hooks/use-system-config'
 import { useTopNavLinks } from '@/hooks/use-top-nav-links'
-import { Button } from '@/components/ui/button'
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from '@/components/ui/dialog'
-import { Skeleton } from '@/components/ui/skeleton'
-import { LanguageSwitcher } from '@/components/language-switcher'
-import { NotificationButton } from '@/components/notification-button'
-import { NotificationDialog } from '@/components/notification-dialog'
-import { ProfileDropdown } from '@/components/profile-dropdown'
+import { cn } from '@/lib/utils'
+import { useAuthStore } from '@/stores/auth-store'
+
 import { defaultTopNavLinks } from '../config/top-nav.config'
 import type { TopNavLink } from '../types'
 import { HeaderLogo } from './header-logo'
@@ -288,18 +282,25 @@ export function PublicHeader(props: PublicHeaderProps) {
               )}
 
               {showLanguageSwitcher && (
-                <LanguageSwitcher
-                  className={
-                    isHomeHero
-                      ? 'text-white hover:bg-transparent hover:text-white aria-expanded:bg-transparent aria-expanded:text-white'
-                      : undefined
-                  }
-                />
+                <div
+                  className={cn(
+                    isHomeHero &&
+                      '[&_button]:text-white [&_button]:hover:bg-transparent [&_button]:hover:text-white [&_button]:aria-expanded:bg-transparent [&_button]:aria-expanded:text-white'
+                  )}
+                >
+                  <LanguageSwitcher />
+                </div>
               )}
               {showNotifications && (
-                <NotificationButton
+                <NotificationPopover
+                  open={notifications.popoverOpen}
+                  onOpenChange={notifications.setPopoverOpen}
                   unreadCount={notifications.unreadCount}
-                  onClick={() => notifications.openDialog()}
+                  activeTab={notifications.activeTab}
+                  onTabChange={notifications.setActiveTab}
+                  notice={notifications.notice}
+                  announcements={notifications.announcements}
+                  loading={notifications.loading}
                   className={
                     isHomeHero
                       ? 'rounded-full text-white hover:bg-transparent hover:text-white'
@@ -340,13 +341,14 @@ export function PublicHeader(props: PublicHeaderProps) {
             {/* Mobile: compact actions + hamburger */}
             <div className='flex items-center gap-2 sm:hidden'>
               {showLanguageSwitcher && (
-                <LanguageSwitcher
-                  className={
-                    isHomeHero
-                      ? 'text-white hover:bg-transparent hover:text-white aria-expanded:bg-transparent aria-expanded:text-white'
-                      : undefined
-                  }
-                />
+                <div
+                  className={cn(
+                    isHomeHero &&
+                      '[&_button]:text-white [&_button]:hover:bg-transparent [&_button]:hover:text-white [&_button]:aria-expanded:bg-transparent [&_button]:aria-expanded:text-white'
+                  )}
+                >
+                  <LanguageSwitcher />
+                </div>
               )}
               {showAuthButtons && !loading && isAuthenticated && (
                 <ProfileDropdown />
@@ -473,43 +475,27 @@ export function PublicHeader(props: PublicHeaderProps) {
             closeAuthPrompt()
           }
         }}
-      >
-        <DialogContent className='sm:max-w-md'>
-          <DialogHeader>
-            <DialogTitle>{t('Sign in required')}</DialogTitle>
-            <DialogDescription>
-              {t('Please sign in to view {{module}}.', {
-                module: authPromptTarget?.title || '',
-              })}
-            </DialogDescription>
-          </DialogHeader>
-          <div className='bg-muted/40 text-muted-foreground rounded-lg px-3 py-2 text-sm'>
-            {t('Redirecting to sign in in {{seconds}} seconds.', {
-              seconds: authPromptSecondsLeft,
-            })}
-          </div>
-          <DialogFooter>
+        title={t('Sign in required')}
+        description={t('Please sign in to view {{module}}.', {
+          module: authPromptTarget?.title || '',
+        })}
+        contentClassName='sm:max-w-md'
+        contentHeight='auto'
+        footer={
+          <>
             <Button variant='outline' onClick={closeAuthPrompt}>
               {t('Cancel')}
             </Button>
             <Button onClick={navigateToSignIn}>{t('Sign in now')}</Button>
-          </DialogFooter>
-        </DialogContent>
+          </>
+        }
+      >
+        <div className='bg-muted/40 text-muted-foreground rounded-lg px-3 py-2 text-sm'>
+          {t('Redirecting to sign in in {{seconds}} seconds.', {
+            seconds: authPromptSecondsLeft,
+          })}
+        </div>
       </Dialog>
-
-      {/* Notification Dialog */}
-      {showNotifications && (
-        <NotificationDialog
-          open={notifications.dialogOpen}
-          onOpenChange={notifications.setDialogOpen}
-          activeTab={notifications.activeTab}
-          onTabChange={notifications.setActiveTab}
-          notice={notifications.notice}
-          announcements={notifications.announcements}
-          loading={notifications.loading}
-          onCloseToday={notifications.closeToday}
-        />
-      )}
     </>
   )
 }

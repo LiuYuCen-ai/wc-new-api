@@ -30,6 +30,7 @@ import {
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Link } from '@tanstack/react-router'
+
 import { AnimateInView } from '@/components/animate-in-view'
 import {
   Dialog,

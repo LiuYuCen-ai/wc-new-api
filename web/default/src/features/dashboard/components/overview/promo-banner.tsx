@@ -35,8 +35,7 @@ export function PromoBanner() {
     <div className='grid gap-4 md:grid-cols-3'>
       {PROMO_POPUP_ITEMS.map((item) => {
         const Icon = PROMO_ICONS[item.icon]
-        const href =
-          item.linkType === 'recharge' ? '/wallet' : item.href
+        const href = 'href' in item ? item.href : '/wallet'
 
         return (
           <PromoCard
@@ -45,7 +44,7 @@ export function PromoBanner() {
             title={t(item.title)}
             description={t(item.description)}
             href={href}
-            external={item.external}
+            external={'external' in item ? item.external : false}
             className='bg-warning/10 hover:bg-warning/15 hover:border-warning/25'
           />
         )

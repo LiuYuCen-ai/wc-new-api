@@ -64,10 +64,7 @@ export function PromoPopup({
         <div className='grid gap-4 sm:grid-cols-3'>
           {PROMO_POPUP_ITEMS.map((item) => {
             const Icon = PROMO_ICONS[item.icon]
-            const href =
-              item.linkType === 'recharge'
-                ? rechargeHref
-                : item.href
+            const href = 'href' in item ? item.href : rechargeHref
 
             return (
               <PromoCard
@@ -76,7 +73,7 @@ export function PromoPopup({
                 title={t(item.title)}
                 description={t(item.description)}
                 href={href}
-                external={item.external}
+                external={'external' in item ? item.external : false}
               />
             )
           })}

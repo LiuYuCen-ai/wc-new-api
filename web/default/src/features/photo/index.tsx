@@ -53,7 +53,6 @@ import {
   isGeminiOptionAvailable,
   PHOTO_MODELS,
   QUALITIES,
-  RESOLUTIONS,
   RESOLUTION_SIZE_MAP,
 } from './constants'
 import { PhotoImageMagnifier } from './components/photo-image-magnifier'

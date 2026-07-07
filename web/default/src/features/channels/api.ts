@@ -16,8 +16,9 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import { api, type ApiRequestConfig } from '@/lib/api'
 import { getGroups as getUserGroups } from '@/features/users/api'
+import { api, type ApiRequestConfig } from '@/lib/api'
+
 import type {
   AddChannelRequest,
   BatchDeleteParams,
@@ -69,6 +70,22 @@ export type CodexCredentialRefreshResponse = {
     channel_id?: number
     channel_type?: number
     channel_name?: string
+  }
+}
+
+export type CodexOAuthStartResponse = {
+  success: boolean
+  message?: string
+  data?: {
+    authorize_url?: string
+  }
+}
+
+export type CodexOAuthCompleteResponse = {
+  success: boolean
+  message?: string
+  data?: {
+    key?: string
   }
 }
 
@@ -308,6 +325,26 @@ export async function getChannelKey(
 // ============================================================================
 // Codex Channel Operations
 // ============================================================================
+
+export async function startCodexOAuth(): Promise<CodexOAuthStartResponse> {
+  const res = await api.post(
+    '/api/channel/codex/oauth/start',
+    {},
+    channelActionConfig()
+  )
+  return res.data
+}
+
+export async function completeCodexOAuth(
+  input: string
+): Promise<CodexOAuthCompleteResponse> {
+  const res = await api.post(
+    '/api/channel/codex/oauth/complete',
+    { input },
+    channelActionConfig()
+  )
+  return res.data
+}
 
 export async function refreshCodexCredential(
   channelId: number
