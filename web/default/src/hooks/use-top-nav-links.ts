@@ -96,8 +96,10 @@ export function useTopNavLinks(): TopNavLink[] {
   }
 
   // Experience Hub (Photo playground)
-  if (modules?.photo !== false) {
-    links.push({ title: t('Experience Hub'), href: '/photo' })
+  const photo = modules?.photo
+  if (photo && typeof photo === 'object' && photo.enabled) {
+    const requiresAuth = photo.requireAuth && !isAuthed
+    links.push({ title: t('Experience Hub'), href: '/photo', requiresAuth })
   }
 
   // About

@@ -34,9 +34,10 @@ import { Switch } from '@/components/ui/switch'
 
 import {
   SettingsControlChildren,
-  SettingsForm,
-  SettingsSwitchContent,
   SettingsControlGroup,
+  SettingsForm,
+  SettingsFormGrid,
+  SettingsSwitchContent,
   SettingsSwitchItem,
 } from '../components/settings-form-layout'
 import { SettingsPageFormActions } from '../components/settings-page-context'
@@ -55,6 +56,8 @@ const headerNavSchema = z.object({
   pricingRequireAuth: z.boolean(),
   rankingsEnabled: z.boolean(),
   rankingsRequireAuth: z.boolean(),
+  photoEnabled: z.boolean(),
+  photoRequireAuth: z.boolean(),
   docs: z.boolean(),
   about: z.boolean(),
 })
@@ -65,6 +68,9 @@ type HeaderNavigationSectionProps = {
   config: HeaderNavModulesConfig
   initialSerialized: string
 }
+
+const formLabelClassName = 'break-words'
+const formDescriptionClassName = 'leading-relaxed break-words'
 
 const toFormValues = (config: HeaderNavModulesConfig): HeaderNavFormValues => ({
   home:
@@ -89,6 +95,14 @@ const toFormValues = (config: HeaderNavModulesConfig): HeaderNavFormValues => ({
     config.rankings?.requireAuth === undefined
       ? HEADER_NAV_DEFAULT.rankings.requireAuth
       : Boolean(config.rankings.requireAuth),
+  photoEnabled:
+    config.photo?.enabled === undefined
+      ? HEADER_NAV_DEFAULT.photo.enabled
+      : Boolean(config.photo.enabled),
+  photoRequireAuth:
+    config.photo?.requireAuth === undefined
+      ? HEADER_NAV_DEFAULT.photo.requireAuth
+      : Boolean(config.photo.requireAuth),
   docs:
     config.docs === undefined ? HEADER_NAV_DEFAULT.docs : Boolean(config.docs),
   about:
@@ -130,6 +144,11 @@ export function HeaderNavigationSection({
         ...(config.rankings ?? HEADER_NAV_DEFAULT.rankings),
         enabled: values.rankingsEnabled,
         requireAuth: values.rankingsRequireAuth,
+      },
+      photo: {
+        ...(config.photo ?? HEADER_NAV_DEFAULT.photo),
+        enabled: values.photoEnabled,
+        requireAuth: values.photoRequireAuth,
       },
     }
 
@@ -178,7 +197,7 @@ export function HeaderNavigationSection({
   const accessModules: Array<{
     enabledKey: keyof HeaderNavFormValues
     requireAuthKey: keyof HeaderNavFormValues
-    requireAuthDependsOn: 'pricingEnabled' | 'rankingsEnabled'
+    requireAuthDependsOn: 'pricingEnabled' | 'rankingsEnabled' | 'photoEnabled'
     title: string
     description: string
     requireAuthTitle: string
@@ -206,6 +225,19 @@ export function HeaderNavigationSection({
         'Visitors must authenticate before accessing the rankings page.'
       ),
     },
+    {
+      enabledKey: 'photoEnabled',
+      requireAuthKey: 'photoRequireAuth',
+      requireAuthDependsOn: 'photoEnabled',
+      title: t('Experience Hub'),
+      description: t(
+        'Unified image generation playground for Gemini, GPT Image, and more.'
+      ),
+      requireAuthTitle: t('Require login to view Experience Hub'),
+      requireAuthDescription: t(
+        'Visitors must authenticate before accessing the Experience Hub.'
+      ),
+    },
   ]
 
   return (
@@ -219,7 +251,8 @@ export function HeaderNavigationSection({
             resetLabel='Reset to default'
             saveLabel='Save navigation'
           />
-          <div className='grid gap-4 md:grid-cols-2'>
+
+          <SettingsFormGrid>
             {simpleModules.map((module) => (
               <FormField
                 key={module.key}
@@ -228,8 +261,12 @@ export function HeaderNavigationSection({
                 render={({ field }) => (
                   <SettingsSwitchItem>
                     <SettingsSwitchContent>
-                      <FormLabel>{module.title}</FormLabel>
-                      <FormDescription>{module.description}</FormDescription>
+                      <FormLabel className={formLabelClassName}>
+                        {module.title}
+                      </FormLabel>
+                      <FormDescription className={formDescriptionClassName}>
+                        {module.description}
+                      </FormDescription>
                     </SettingsSwitchContent>
                     <FormControl>
                       <Switch
@@ -242,9 +279,9 @@ export function HeaderNavigationSection({
                 )}
               />
             ))}
-          </div>
+          </SettingsFormGrid>
 
-          <div className='grid gap-4 lg:grid-cols-2'>
+          <SettingsFormGrid>
             {accessModules.map((module) => (
               <SettingsControlGroup key={module.enabledKey}>
                 <FormField
@@ -253,8 +290,12 @@ export function HeaderNavigationSection({
                   render={({ field }) => (
                     <SettingsSwitchItem>
                       <SettingsSwitchContent>
-                        <FormLabel>{module.title}</FormLabel>
-                        <FormDescription>{module.description}</FormDescription>
+                        <FormLabel className={formLabelClassName}>
+                          {module.title}
+                        </FormLabel>
+                        <FormDescription className={formDescriptionClassName}>
+                          {module.description}
+                        </FormDescription>
                       </SettingsSwitchContent>
                       <FormControl>
                         <Switch
@@ -274,8 +315,10 @@ export function HeaderNavigationSection({
                     <SettingsControlChildren>
                       <SettingsSwitchItem className='py-2'>
                         <SettingsSwitchContent>
-                          <FormLabel>{module.requireAuthTitle}</FormLabel>
-                          <FormDescription>
+                          <FormLabel className={formLabelClassName}>
+                            {module.requireAuthTitle}
+                          </FormLabel>
+                          <FormDescription className={formDescriptionClassName}>
                             {module.requireAuthDescription}
                           </FormDescription>
                         </SettingsSwitchContent>
@@ -293,7 +336,7 @@ export function HeaderNavigationSection({
                 />
               </SettingsControlGroup>
             ))}
-          </div>
+          </SettingsFormGrid>
         </SettingsForm>
       </Form>
     </SettingsSection>
