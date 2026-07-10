@@ -27,17 +27,10 @@ import {
   HeartHandshake,
   ArrowRight,
 } from 'lucide-react'
-import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Link } from '@tanstack/react-router'
 
 import { AnimateInView } from '@/components/animate-in-view'
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-} from '@/components/ui/dialog'
 import { getLobeIcon } from '@/lib/lobe-icon'
 
 interface FeaturesProps {
@@ -46,7 +39,6 @@ interface FeaturesProps {
 
 export function Features(_props: FeaturesProps) {
   const { t } = useTranslation()
-  const [contactOpen, setContactOpen] = useState(false)
 
   const features = [
     {
@@ -229,21 +221,6 @@ export function Features(_props: FeaturesProps) {
                   'WebChannel provides stable, efficient, and scalable model access capabilities to help teams quickly build AI applications for production environments.'
                 )}
               </p>
-              <div className='mt-6 flex flex-wrap gap-3'>
-                <button
-                  type='button'
-                  onClick={() => setContactOpen(true)}
-                  className='inline-flex h-10 items-center justify-center rounded-md bg-primary px-5 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90'
-                >
-                  {t('Contact support')}
-                </button>
-                <Link
-                  to='/about'
-                  className='inline-flex h-10 items-center justify-center rounded-md border border-slate-300/70 bg-white/45 px-5 text-sm font-medium transition-colors hover:bg-white/70'
-                >
-                  {t('Learn more')}
-                </Link>
-              </div>
             </div>
 
             <div className='grid gap-20 md:grid-cols-2'>
@@ -386,14 +363,6 @@ export function Features(_props: FeaturesProps) {
             </div>
           </div>
         </div>
-
-        <Dialog open={contactOpen} onOpenChange={setContactOpen}>
-          <DialogContent className='min-h-48 sm:max-w-md'>
-            <DialogHeader>
-              <DialogTitle>{t('Contact support')}</DialogTitle>
-            </DialogHeader>
-          </DialogContent>
-        </Dialog>
 
         <AnimateInView className='mb-16 max-w-lg'>
           <p className='text-muted-foreground mb-3 text-xs font-medium tracking-widest uppercase'>
