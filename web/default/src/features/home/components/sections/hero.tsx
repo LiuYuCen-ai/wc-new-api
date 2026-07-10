@@ -43,7 +43,7 @@ const HERO_SLIDES = [
   {
     src: '/landing/banana-hero-bg.png',
     title: 'Unified access to next-gen AI image models',
-    eyebrow: 'New API Image Gateway',
+    eyebrow: 'Image Gateway',
     desc: 'Aggregate Gemini, GPT Image, and more image models through one compatible endpoint to build stable, observable, cost-efficient generation services faster.',
     model: 'gemini-3.1-flash-image-preview',
     tone: 'from-amber-300 via-yellow-400 to-orange-500',
@@ -61,7 +61,7 @@ const HERO_SLIDES = [
     title: 'High-concurrency visual APIs for business',
     eyebrow: 'Gemini Flash Image',
     desc: 'Automatically select available channels to reduce failures caused by provider volatility, so teams can focus on product experience instead of model integration.',
-    model: 'gemini-2.5-flash-image',
+    model: 'gemini-3-pro-image-preview',
     tone: 'from-cyan-300 via-sky-400 to-blue-500',
   },
 ]

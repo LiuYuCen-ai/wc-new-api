@@ -2,12 +2,12 @@
   "footer.columns.related.links.midjourney": "Midjourney-Proxy",
   "Midjourney": "Midjourney",
   "MidjourneyPlus": "MidjourneyPlus",
-  "New API Image Gateway": "New API Image Gateway",
+  "Image Gateway": "Image Gateway",
   "No image data": "No image data",
   "No images returned": "No images returned",
   "No images yet": "No images yet",
   "Number of images": "Number of images",
   "Please enter a prompt": "Please enter a prompt",
   "Quality": "Quality",
-  "Start with New API": "Start with New API"
+  "Start with": "Start with"
 }
