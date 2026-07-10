@@ -67,6 +67,13 @@ import type {
   PhotoResolution,
 } from './types'
 
+const photoOptionTileClass =
+  'flex min-w-0 w-full flex-col items-start gap-0.5 rounded-md border px-2.5 py-2 text-left transition-colors'
+const photoOptionHintClass = 'w-full break-words text-[11px] leading-snug'
+const photoSectionLabelClass =
+  'text-muted-foreground text-xs font-medium leading-snug break-words'
+const photoWrapButtonClass = 'h-auto min-h-9 whitespace-normal'
+
 export type { PhotoGenerationSnapshot } from './types'
 
 type PhotoPreviewItem = {
@@ -522,25 +529,25 @@ export function Photo() {
   return (
     <PublicLayout>
       <PageTransition>
-        <div className='mx-auto w-full max-w-7xl py-6'>
+        <div className='mx-auto w-full min-w-0 max-w-7xl px-4 py-6 sm:px-6'>
           {/* Header */}
-          <div className='mb-6 flex flex-col gap-2'>
-            <div className='flex items-center gap-2'>
-              <Sparkles className='text-primary h-6 w-6' />
-              <h1 className='text-2xl font-bold tracking-tight'>
+          <div className='mb-6 flex min-w-0 flex-col gap-2'>
+            <div className='flex min-w-0 items-center gap-2'>
+              <Sparkles className='text-primary h-6 w-6 shrink-0' />
+              <h1 className='min-w-0 text-2xl font-bold tracking-tight break-words'>
                 {t('Experience Hub')}
               </h1>
             </div>
-            <p className='text-muted-foreground text-sm'>
+            <p className='text-muted-foreground max-w-3xl text-sm leading-relaxed text-balance break-words'>
               {t(
                 'Unified access to Gemini, GPT Image and other image models. Quota is deducted automatically.'
               )}
             </p>
           </div>
 
-          <div className='grid grid-cols-1 gap-6 lg:grid-cols-[320px_1fr]'>
+          <div className='grid min-w-0 grid-cols-1 gap-6 lg:grid-cols-[minmax(0,380px)_minmax(0,1fr)]'>
             {/* Left: parameters */}
-            <Card className='h-fit lg:sticky lg:top-24'>
+            <Card className='h-fit min-w-0 lg:sticky lg:top-24'>
               <CardContent className='space-y-4 p-5'>
                 <form
                   ref={paramsFormRef}
@@ -588,7 +595,7 @@ export function Photo() {
                             type='button'
                             onClick={() => update('model', model.id)}
                             className={cn(
-                              'flex w-full items-start gap-3 rounded-lg border px-3 py-2.5 text-left transition-colors',
+                              'flex min-w-0 w-full items-start gap-3 rounded-lg border px-3 py-2.5 text-left transition-colors',
                               isSelected
                                 ? 'border-primary bg-primary/5 ring-1 ring-primary/25'
                                 : 'border-border bg-muted/20 hover:border-muted-foreground/25 hover:bg-muted/50'
@@ -606,7 +613,7 @@ export function Photo() {
                                 {t(model.label)}
                               </span>
                               {model.description ? (
-                                <span className='text-muted-foreground block text-xs leading-relaxed'>
+                                <span className='text-muted-foreground block text-xs leading-relaxed break-words'>
                                   {t(model.description)}
                                 </span>
                               ) : null}
@@ -638,7 +645,7 @@ export function Photo() {
                     <>
                       <div className='space-y-2'>
                         <Label>{t('Image size')}</Label>
-                        <div className='grid grid-cols-3 gap-2'>
+                        <div className='grid grid-cols-1 gap-2'>
                           {GPT_IMAGE_SIZE_OPTIONS.map((item) => {
                             const isSelected = params.resolution === item.size
                             return (
@@ -651,7 +658,7 @@ export function Photo() {
                                   )
                                 }
                                 className={cn(
-                                  'flex flex-col items-start gap-0.5 rounded-md border px-2.5 py-2 text-left transition-colors',
+                                  photoOptionTileClass,
                                   isSelected
                                     ? 'border-primary bg-primary text-primary-foreground shadow-sm'
                                     : 'border-border bg-background text-foreground hover:bg-muted/60'
@@ -662,7 +669,7 @@ export function Photo() {
                                 </span>
                                 <span
                                   className={cn(
-                                    'text-[11px] leading-snug',
+                                    photoOptionHintClass,
                                     isSelected
                                       ? 'text-primary-foreground/75'
                                       : 'text-muted-foreground'
@@ -680,10 +687,10 @@ export function Photo() {
                         <Label>{t('Aspect ratio')}</Label>
                         {gptSizeGroups.map((group) => (
                           <div key={group.id} className='space-y-2'>
-                            <p className='text-muted-foreground text-xs font-medium'>
+                            <p className={photoSectionLabelClass}>
                               {t(group.label)}
                             </p>
-                            <div className='grid grid-cols-2 gap-2'>
+                            <div className='grid grid-cols-1 gap-2 sm:grid-cols-2'>
                               {group.items.map((item) => {
                                 const isSelected = params.size === item.size
                                 return (
@@ -697,7 +704,7 @@ export function Photo() {
                                       )
                                     }
                                     className={cn(
-                                      'flex flex-col items-start gap-0.5 rounded-md border px-2.5 py-2 text-left transition-colors',
+                                      photoOptionTileClass,
                                       isSelected
                                         ? 'border-primary bg-primary text-primary-foreground shadow-sm'
                                         : 'border-border bg-background text-foreground hover:bg-muted/60'
@@ -710,7 +717,7 @@ export function Photo() {
                                     </span>
                                     <span
                                       className={cn(
-                                        'text-[11px] leading-snug',
+                                        photoOptionHintClass,
                                         isSelected
                                           ? 'text-primary-foreground/75'
                                           : 'text-muted-foreground'
@@ -729,7 +736,7 @@ export function Photo() {
                       {selectedModel.supportsQuality ? (
                         <div className='space-y-2'>
                           <Label>{t('Quality')}</Label>
-                          <div className='grid grid-cols-4 gap-2'>
+                          <div className='grid grid-cols-2 gap-2'>
                             {QUALITIES.map((q) => {
                               const isSelected = params.quality === q
                               return (
@@ -743,7 +750,7 @@ export function Photo() {
                                     )
                                   }
                                   className={cn(
-                                    'rounded-md border px-2 py-2 text-xs font-medium transition-colors',
+                                    'min-w-0 rounded-md border px-2 py-2 text-xs font-medium break-words transition-colors',
                                     isSelected
                                       ? 'border-primary bg-primary text-primary-foreground shadow-sm'
                                       : 'border-border bg-background text-foreground hover:bg-muted/60'
@@ -762,14 +769,7 @@ export function Photo() {
                       {/* image_size + aspect_ratio — Gemini */}
                       <div className='space-y-2'>
                         <Label>{t('Image size')}</Label>
-                        <div
-                          className={cn(
-                            'grid gap-2',
-                            geminiImageSizeOptions.length > 3
-                              ? 'grid-cols-2'
-                              : 'grid-cols-3'
-                          )}
-                        >
+                        <div className='grid grid-cols-1 gap-2'>
                           {geminiImageSizeOptions.map((item) => {
                             const isSelected = params.imageSize === item.size
                             return (
@@ -780,13 +780,13 @@ export function Photo() {
                                   updateGeminiImageSize(item.size)
                                 }
                                 className={cn(
-                                  'flex flex-col items-start gap-0.5 rounded-md border px-2.5 py-2 text-left transition-colors',
+                                  photoOptionTileClass,
                                   isSelected
                                     ? 'border-primary bg-primary text-primary-foreground shadow-sm'
                                     : 'border-border bg-background text-foreground hover:bg-muted/60'
                                 )}
                               >
-                                <div className='flex w-full items-center gap-1.5'>
+                                <div className='flex w-full min-w-0 flex-wrap items-center gap-1.5'>
                                   <span className='text-sm font-medium'>
                                     {item.size}
                                   </span>
@@ -805,7 +805,7 @@ export function Photo() {
                                 </div>
                                 <span
                                   className={cn(
-                                    'text-[11px] leading-snug',
+                                    photoOptionHintClass,
                                     isSelected
                                       ? 'text-primary-foreground/75'
                                       : 'text-muted-foreground'
@@ -824,10 +824,10 @@ export function Photo() {
                         {geminiAspectRatioGroups.length > 0 ? (
                           geminiAspectRatioGroups.map((group) => (
                             <div key={group.id} className='space-y-2'>
-                              <p className='text-muted-foreground text-xs font-medium'>
+                              <p className={photoSectionLabelClass}>
                                 {t(group.label)}
                               </p>
-                              <div className='grid grid-cols-2 gap-2'>
+                              <div className='grid grid-cols-1 gap-2 sm:grid-cols-2'>
                                 {group.items.map((item) => {
                                   const isSelected =
                                     params.aspectRatio === item.ratio
@@ -842,13 +842,13 @@ export function Photo() {
                                         )
                                       }
                                       className={cn(
-                                        'flex flex-col items-start gap-0.5 rounded-md border px-2.5 py-2 text-left transition-colors',
+                                        photoOptionTileClass,
                                         isSelected
                                           ? 'border-primary bg-primary text-primary-foreground shadow-sm'
                                           : 'border-border bg-background text-foreground hover:bg-muted/60'
                                       )}
                                     >
-                                      <div className='flex w-full items-center gap-1.5'>
+                                      <div className='flex w-full min-w-0 flex-wrap items-center gap-1.5'>
                                         <span className='text-sm font-medium'>
                                           {item.ratio}
                                         </span>
@@ -867,7 +867,7 @@ export function Photo() {
                                       </div>
                                       <span
                                         className={cn(
-                                          'text-[11px] leading-snug',
+                                          photoOptionHintClass,
                                           isSelected
                                             ? 'text-primary-foreground/75'
                                             : 'text-muted-foreground'
@@ -882,7 +882,7 @@ export function Photo() {
                             </div>
                           ))
                         ) : (
-                          <p className='text-muted-foreground text-xs'>
+                          <p className='text-muted-foreground text-xs leading-relaxed break-words'>
                             {t(
                               'Select an image size to view aspect ratio options.'
                             )}
@@ -902,10 +902,10 @@ export function Photo() {
                         className='hidden'
                         onChange={handleFilesPicked}
                       />
-                      <div className='flex items-center justify-between gap-2'>
-                        <div className='flex items-center gap-2 font-medium'>
-                          <ImageIcon className='h-4 w-4' />
-                          <span>{t('Image Input')}</span>
+                      <div className='flex flex-wrap items-center justify-between gap-2'>
+                        <div className='flex min-w-0 items-center gap-2 font-medium'>
+                          <ImageIcon className='h-4 w-4 shrink-0' />
+                          <span className='min-w-0 break-words'>{t('Image Input')}</span>
                         </div>
                         <div className='flex items-center gap-2'>
                           <Switch
@@ -932,7 +932,7 @@ export function Photo() {
                           </Button>
                         </div>
                       </div>
-                      <p className='text-muted-foreground text-xs'>
+                      <p className='text-muted-foreground text-xs leading-relaxed break-words'>
                         {t(
                           'Enable to add local images as image input for image editing.'
                         )}
@@ -987,7 +987,7 @@ export function Photo() {
                   <Button
                     type='submit'
                     disabled={formLoading}
-                    className='w-full'
+                    className={cn('w-full', photoWrapButtonClass)}
                   >
                     {formLoading ? (
                       <>
@@ -1006,12 +1006,12 @@ export function Photo() {
             </Card>
 
             {/* Right: generation history */}
-            <Card className='flex min-h-[560px] flex-col overflow-hidden lg:max-h-[calc(100vh-7rem)]'>
+            <Card className='flex min-h-[560px] min-w-0 flex-col overflow-hidden lg:max-h-[calc(100vh-7rem)]'>
               <div className='border-b px-4 py-3 sm:px-5'>
-                <h2 className='text-base font-semibold tracking-tight'>
+                <h2 className='text-base font-semibold tracking-tight break-words'>
                   {t('Generation History')}
                 </h2>
-                <p className='text-muted-foreground mt-1 text-xs sm:text-sm'>
+                <p className='text-muted-foreground mt-1 text-xs leading-relaxed break-words sm:text-sm'>
                   {user
                     ? t(
                         'Your recent generations are saved here and can be previewed anytime.'
@@ -1121,8 +1121,8 @@ function EmptyState({
         <ImageIcon className='text-muted-foreground h-8 w-8' />
       </div>
       <div className='space-y-1'>
-        <h3 className='text-base font-semibold'>{t('No images yet')}</h3>
-        <p className='text-muted-foreground max-w-md text-sm'>{description}</p>
+        <h3 className='text-base font-semibold break-words'>{t('No images yet')}</h3>
+        <p className='text-muted-foreground max-w-md text-sm leading-relaxed break-words'>{description}</p>
       </div>
     </div>
   )
@@ -1256,7 +1256,7 @@ function PhotoPreviewModelPicker({
   return (
     <div className='space-y-2'>
       <Label>{t('Model')}</Label>
-      <p className='text-muted-foreground text-xs'>
+      <p className='text-muted-foreground text-xs leading-relaxed break-words'>
         {t('Uses the model from this generation by default. You can change it before generating.')}
       </p>
       <div className='bg-muted/60 rounded-lg p-1'>
@@ -1299,14 +1299,14 @@ function PhotoPreviewModelPicker({
               disabled={disabled}
               onClick={() => onChange(model.id)}
               className={cn(
-                'flex items-start gap-2 rounded-md border px-2.5 py-2 text-left transition-colors',
+                'flex min-w-0 items-start gap-2 rounded-md border px-2.5 py-2 text-left transition-colors',
                 isSelected
                   ? 'border-primary bg-primary/5 ring-1 ring-primary/25'
                   : 'border-border bg-muted/20 hover:border-muted-foreground/25 hover:bg-muted/50'
               )}
             >
               <div className='min-w-0 flex-1'>
-                <span className='block text-xs font-medium leading-snug'>
+                <span className='block text-xs font-medium leading-snug break-words'>
                   {t(model.label)}
                 </span>
               </div>
@@ -1389,14 +1389,14 @@ function PhotoPreviewSizePicker({
     <div className='space-y-3'>
       <div className='space-y-1'>
         <Label>{t('Image size')}</Label>
-        <p className='text-muted-foreground text-xs'>
+        <p className='text-muted-foreground text-xs leading-relaxed break-words'>
           {t('Adjust output size and aspect ratio before generating.')}
         </p>
       </div>
 
       {selectedModel.supportsSize ? (
         <>
-          <div className='grid grid-cols-3 gap-1.5'>
+          <div className='grid grid-cols-1 gap-1.5 sm:grid-cols-3'>
             {GPT_IMAGE_SIZE_OPTIONS.map((item) => {
               const isSelected = params.resolution === item.size
               return (
@@ -1408,7 +1408,8 @@ function PhotoPreviewSizePicker({
                     updateResolution(item.size as '1K' | '2K' | '4K')
                   }
                   className={cn(
-                    'flex flex-col items-start gap-0.5 rounded-md border px-2 py-1.5 text-left transition-colors',
+                    photoOptionTileClass,
+                    'px-2 py-1.5',
                     isSelected
                       ? 'border-primary bg-primary text-primary-foreground shadow-sm'
                       : 'border-border bg-background text-foreground hover:bg-muted/60'
@@ -1417,7 +1418,8 @@ function PhotoPreviewSizePicker({
                   <span className='text-xs font-medium'>{item.size}</span>
                   <span
                     className={cn(
-                      'text-[10px] leading-snug',
+                      photoOptionHintClass,
+                      'text-[10px]',
                       isSelected
                         ? 'text-primary-foreground/75'
                         : 'text-muted-foreground'
@@ -1434,10 +1436,10 @@ function PhotoPreviewSizePicker({
             <Label className='text-xs'>{t('Aspect ratio')}</Label>
             {gptSizeGroups.map((group) => (
               <div key={group.id} className='space-y-1.5'>
-                <p className='text-muted-foreground text-[11px] font-medium'>
+                <p className='text-muted-foreground text-[11px] font-medium leading-snug break-words'>
                   {t(group.label)}
                 </p>
-                <div className='grid grid-cols-2 gap-1.5 sm:grid-cols-3'>
+                <div className='grid grid-cols-1 gap-1.5 sm:grid-cols-2 lg:grid-cols-3'>
                   {group.items.map((item) => {
                     const isSelected = params.size === item.size
                     return (
@@ -1451,7 +1453,8 @@ function PhotoPreviewSizePicker({
                           })
                         }
                         className={cn(
-                          'flex flex-col items-start gap-0.5 rounded-md border px-2 py-1.5 text-left transition-colors',
+                          photoOptionTileClass,
+                          'px-2 py-1.5',
                           isSelected
                             ? 'border-primary bg-primary text-primary-foreground shadow-sm'
                             : 'border-border bg-background text-foreground hover:bg-muted/60'
@@ -1462,7 +1465,8 @@ function PhotoPreviewSizePicker({
                         </span>
                         <span
                           className={cn(
-                            'text-[10px] leading-snug',
+                            photoOptionHintClass,
+                            'text-[10px]',
                             isSelected
                               ? 'text-primary-foreground/75'
                               : 'text-muted-foreground'
@@ -1481,7 +1485,7 @@ function PhotoPreviewSizePicker({
           {selectedModel.supportsQuality ? (
             <div className='space-y-1.5'>
               <Label className='text-xs'>{t('Quality')}</Label>
-              <div className='grid grid-cols-4 gap-1.5'>
+              <div className='grid grid-cols-2 gap-1.5 sm:grid-cols-4'>
                 {QUALITIES.map((q) => {
                   const isSelected = params.quality === q
                   return (
@@ -1493,7 +1497,7 @@ function PhotoPreviewSizePicker({
                         onParamsChange({ quality: q as PhotoQuality })
                       }
                       className={cn(
-                        'rounded-md border px-2 py-1.5 text-[11px] font-medium transition-colors',
+                        'min-w-0 rounded-md border px-2 py-1.5 text-[11px] font-medium break-words transition-colors',
                         isSelected
                           ? 'border-primary bg-primary text-primary-foreground shadow-sm'
                           : 'border-border bg-background text-foreground hover:bg-muted/60'
@@ -1509,14 +1513,7 @@ function PhotoPreviewSizePicker({
         </>
       ) : (
         <>
-          <div
-            className={cn(
-              'grid gap-1.5',
-              geminiImageSizeOptions.length > 3
-                ? 'grid-cols-2'
-                : 'grid-cols-3'
-            )}
-          >
+          <div className='grid grid-cols-1 gap-1.5 sm:grid-cols-2'>
             {geminiImageSizeOptions.map((item) => {
               const isSelected = params.imageSize === item.size
               return (
@@ -1526,7 +1523,8 @@ function PhotoPreviewSizePicker({
                   disabled={disabled}
                   onClick={() => updateGeminiImageSize(item.size)}
                   className={cn(
-                    'flex flex-col items-start gap-0.5 rounded-md border px-2 py-1.5 text-left transition-colors',
+                    photoOptionTileClass,
+                    'px-2 py-1.5',
                     isSelected
                       ? 'border-primary bg-primary text-primary-foreground shadow-sm'
                       : 'border-border bg-background text-foreground hover:bg-muted/60'
@@ -1535,7 +1533,8 @@ function PhotoPreviewSizePicker({
                   <span className='text-xs font-medium'>{item.size}</span>
                   <span
                     className={cn(
-                      'text-[10px] leading-snug',
+                      photoOptionHintClass,
+                      'text-[10px]',
                       isSelected
                         ? 'text-primary-foreground/75'
                         : 'text-muted-foreground'
@@ -1553,10 +1552,10 @@ function PhotoPreviewSizePicker({
             {geminiAspectRatioGroups.length > 0 ? (
               geminiAspectRatioGroups.map((group) => (
                 <div key={group.id} className='space-y-1.5'>
-                  <p className='text-muted-foreground text-[11px] font-medium'>
+                  <p className='text-muted-foreground text-[11px] font-medium leading-snug break-words'>
                     {t(group.label)}
                   </p>
-                  <div className='grid grid-cols-2 gap-1.5 sm:grid-cols-3'>
+                  <div className='grid grid-cols-1 gap-1.5 sm:grid-cols-2 lg:grid-cols-3'>
                     {group.items.map((item) => {
                       const isSelected = params.aspectRatio === item.ratio
                       return (
@@ -1570,7 +1569,8 @@ function PhotoPreviewSizePicker({
                             })
                           }
                           className={cn(
-                            'flex flex-col items-start gap-0.5 rounded-md border px-2 py-1.5 text-left transition-colors',
+                            photoOptionTileClass,
+                            'px-2 py-1.5',
                             isSelected
                               ? 'border-primary bg-primary text-primary-foreground shadow-sm'
                               : 'border-border bg-background text-foreground hover:bg-muted/60'
@@ -1581,7 +1581,8 @@ function PhotoPreviewSizePicker({
                           </span>
                           <span
                             className={cn(
-                              'text-[10px] leading-snug',
+                              photoOptionHintClass,
+                              'text-[10px]',
                               isSelected
                                 ? 'text-primary-foreground/75'
                                 : 'text-muted-foreground'
@@ -1596,7 +1597,7 @@ function PhotoPreviewSizePicker({
                 </div>
               ))
             ) : (
-              <p className='text-muted-foreground text-xs'>
+              <p className='text-muted-foreground text-xs leading-relaxed break-words'>
                 {t('Select an image size to view aspect ratio options.')}
               </p>
             )}
@@ -1743,7 +1744,7 @@ function PhotoImagePreviewDialog({
 
           {showRail ? (
             <div className='bg-background flex w-[104px] shrink-0 flex-col gap-2 overflow-y-auto border-l p-2 sm:w-[120px]'>
-              <p className='text-muted-foreground px-1 text-[11px] font-medium'>
+              <p className='text-muted-foreground px-1 text-[11px] font-medium leading-snug break-words'>
                 {t('Images in this generation')}
               </p>
               {items.map((item, index) => {
@@ -1804,7 +1805,7 @@ function PhotoImagePreviewDialog({
               <ImagePlus className='text-primary h-4 w-4' />
               <Label htmlFor='photo-img2img-prompt'>{t('Image to image')}</Label>
             </div>
-            <p className='text-muted-foreground text-xs leading-relaxed'>
+            <p className='text-muted-foreground text-xs leading-relaxed break-words'>
               {t(
                 'Describe how you want to transform this image. The current image will be used as reference input.'
               )}
@@ -1824,7 +1825,10 @@ function PhotoImagePreviewDialog({
               type='button'
               variant='ghost'
               size='sm'
-              className='text-muted-foreground justify-start px-0 sm:px-2'
+              className={cn(
+                'text-muted-foreground justify-start px-0 sm:px-2',
+                photoWrapButtonClass
+              )}
               disabled={generating || !editSource}
               onClick={() => {
                 if (!editSource) return
@@ -1844,6 +1848,7 @@ function PhotoImagePreviewDialog({
               <Button
                 type='button'
                 variant='outline'
+                className={photoWrapButtonClass}
                 disabled={generating || !currentItem.src || currentItem.loading}
                 onClick={() => {
                   if (!currentItem.src) return
@@ -1855,6 +1860,7 @@ function PhotoImagePreviewDialog({
               </Button>
               <Button
                 type='button'
+                className={photoWrapButtonClass}
                 disabled={!canGenerate || !editSource}
                 onClick={() => {
                   if (!editSource) return
