@@ -57,10 +57,11 @@ import {
 } from './constants'
 import { PhotoImageMagnifier } from './components/photo-image-magnifier'
 import type { PhotoHistoryItem } from './lib/photo-history-api'
+import { hydratePhotoHistoryItem } from './lib/photo-history-image'
 import { getPhotoResultSrc, pickGenerationSnapshot } from './lib/photo-utils'
+import { PhotoHistoryThumbnail } from './components/photo-history-thumbnail'
 import type {
   PhotoAspectRatio,
-  PhotoGenerationSnapshot,
   PhotoImageSize,
   PhotoParams,
   PhotoQuality,
@@ -1153,36 +1154,27 @@ function PhotoPendingGrid({ count }: { count: number }) {
 type HistoryImageEntry = {
   id: string
   historyItemId: string
-  src: string
+  image: PhotoHistoryItem['images'][number]
+  historyItem: PhotoHistoryItem
   prompt: string
   model: string
   createdAt: string
   imageIndex: number
-  imageSources: string[]
-  generationParams?: PhotoGenerationSnapshot
 }
 
 function flattenHistoryImages(history: PhotoHistoryItem[]): HistoryImageEntry[] {
-  return history.flatMap((item) => {
-    const imageSources = item.images.map(getPhotoResultSrc).filter(Boolean)
-    return item.images.flatMap((img, idx) => {
-      const src = getPhotoResultSrc(img)
-      if (!src) return []
-      return [
-        {
-          id: `${item.id}-${idx}`,
-          historyItemId: item.id,
-          src,
-          prompt: item.prompt,
-          model: item.model,
-          createdAt: item.created_at,
-          imageIndex: idx,
-          imageSources,
-          generationParams: item.generationParams,
-        },
-      ]
-    })
-  })
+  return history.flatMap((item) =>
+    item.images.map((image, idx) => ({
+      id: `${item.id}-${idx}`,
+      historyItemId: item.id,
+      image,
+      historyItem: item,
+      prompt: item.prompt,
+      model: item.model,
+      createdAt: item.created_at,
+      imageIndex: idx,
+    }))
+  )
 }
 
 function HistoryFeed({
@@ -1193,46 +1185,52 @@ function HistoryFeed({
   onPreview: (state: PhotoPreviewState) => void
 }) {
   const { t } = useTranslation()
-  const entries = flattenHistoryImages(history)
+  const entries = useMemo(() => flattenHistoryImages(history), [history])
+
+  const handleOpenPreview = async (entry: HistoryImageEntry) => {
+    const hydrated = await hydratePhotoHistoryItem(entry.historyItem)
+    const imageSources = hydrated.images.map(getPhotoResultSrc).filter(Boolean)
+    if (imageSources.length === 0) return
+
+    onPreview({
+      prompt: entry.prompt,
+      model: entry.model,
+      createdAt: entry.createdAt,
+      historyItemId: entry.historyItemId,
+      generationParams: entry.historyItem.generationParams,
+      items: imageSources.map((src, idx) => ({
+        id: `${entry.historyItemId}-${idx}`,
+        src,
+      })),
+      currentIndex: entry.imageIndex,
+    })
+  }
 
   return (
     <div className='grid grid-cols-3 gap-2 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-4 xl:grid-cols-6'>
       {entries.map((entry) => (
-        <button
+        <PhotoHistoryThumbnail
           key={entry.id}
-          type='button'
-          onClick={() =>
-            onPreview({
-              prompt: entry.prompt,
-              model: entry.model,
-              createdAt: entry.createdAt,
-              historyItemId: entry.historyItemId,
-              generationParams: entry.generationParams,
-              items: entry.imageSources.map((src, idx) => ({
-                id: `${entry.historyItemId}-${idx}`,
-                src,
-              })),
-              currentIndex: entry.imageIndex,
-            })
+          image={entry.image}
+          alt={entry.prompt}
+          ariaLabel={t('View image')}
+          onClick={() => {
+            void handleOpenPreview(entry)
+          }}
+          overlay={
+            <>
+              <div className='pointer-events-none absolute inset-0 bg-black/0 transition-colors group-hover:bg-black/10' />
+              <div className='pointer-events-none absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/75 via-black/35 to-transparent p-2 pt-6 opacity-0 transition-opacity group-hover:opacity-100 group-focus-visible:opacity-100'>
+                <p className='line-clamp-2 text-left text-[11px] leading-tight text-white'>
+                  {entry.prompt}
+                </p>
+                <p className='mt-1 truncate text-left text-[10px] text-white/75'>
+                  {entry.model} · {new Date(entry.createdAt).toLocaleString()}
+                </p>
+              </div>
+            </>
           }
-          className='bg-muted group relative aspect-square cursor-zoom-in overflow-hidden rounded-lg ring-1 ring-foreground/10'
-          aria-label={t('View image')}
-        >
-          <img
-            src={entry.src}
-            alt={entry.prompt}
-            className='h-full w-full object-cover transition-transform duration-200 group-hover:scale-[1.03]'
-          />
-          <div className='pointer-events-none absolute inset-0 bg-black/0 transition-colors group-hover:bg-black/10' />
-          <div className='pointer-events-none absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/75 via-black/35 to-transparent p-2 pt-6 opacity-0 transition-opacity group-hover:opacity-100 group-focus-visible:opacity-100'>
-            <p className='line-clamp-2 text-left text-[11px] leading-tight text-white'>
-              {entry.prompt}
-            </p>
-            <p className='mt-1 truncate text-left text-[10px] text-white/75'>
-              {entry.model} · {new Date(entry.createdAt).toLocaleString()}
-            </p>
-          </div>
-        </button>
+        />
       ))}
     </div>
   )

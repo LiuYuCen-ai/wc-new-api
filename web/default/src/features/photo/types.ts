@@ -82,6 +82,7 @@ export type PhotoParams = {
 }
 
 export type PhotoResult = {
+  id?: string
   url?: string
   b64?: string
   mimeType?: string

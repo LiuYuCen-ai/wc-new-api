@@ -17,6 +17,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 import { api } from '@/lib/api'
+import { getPhotoResultSrc, rememberPhotoResultSrc } from './photo-utils'
 import type { PhotoResult } from '../types'
 
 const PHOTO_HISTORY_IMAGE_PREFIX = '/api/photo/images/'
@@ -66,12 +67,25 @@ export async function hydratePhotoResult(image: PhotoResult): Promise<PhotoResul
   const parsed = parseDataUrl(dataUrl)
   if (!parsed) return image
 
-  return {
+  const hydrated = {
     ...image,
+    id: image.id,
     b64: parsed.b64,
     mimeType: parsed.mimeType || image.mimeType,
     url: undefined,
   }
+  rememberPhotoResultSrc(hydrated, dataUrl)
+  return hydrated
+}
+
+export async function resolvePhotoHistoryImageSrc(
+  image: PhotoResult
+): Promise<string> {
+  const existing = getPhotoResultSrc(image)
+  if (existing) return existing
+
+  const hydrated = await hydratePhotoResult(image)
+  return getPhotoResultSrc(hydrated)
 }
 
 export async function hydratePhotoResults(

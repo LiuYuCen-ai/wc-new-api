@@ -18,6 +18,8 @@ For commercial licensing, please contact support@quantumnous.com
 */
 import type { PhotoGenerationSnapshot, PhotoParams } from '../types'
 
+const photoResultSrcCache = new Map<string, string>()
+
 export function pickGenerationSnapshot(
   params: PhotoParams
 ): PhotoGenerationSnapshot {
@@ -30,19 +32,58 @@ export function pickGenerationSnapshot(
   }
 }
 
+export function buildPhotoBase64DataUrl(
+  b64: string,
+  mimeType?: string
+): string {
+  const normalized = b64.trim()
+  if (!normalized) return ''
+  if (normalized.startsWith('data:')) return normalized
+
+  const type = mimeType?.trim() || 'image/png'
+  return `data:${type};base64,${normalized}`
+}
+
+function getPhotoResultCacheKey(image: {
+  id?: string
+  b64?: string
+}): string | null {
+  if (image.id) return `id:${image.id}`
+  if (image.b64) return `b64:${image.b64.slice(0, 96)}`
+  return null
+}
+
 export function getPhotoResultSrc(image: {
+  id?: string
   url?: string
   b64?: string
   mimeType?: string
 }): string {
-  if (image.b64 && image.mimeType) {
-    return `data:${image.mimeType};base64,${image.b64}`
+  if (!image.b64) return ''
+
+  const cacheKey = getPhotoResultCacheKey(image)
+  if (cacheKey) {
+    const cached = photoResultSrcCache.get(cacheKey)
+    if (cached) return cached
   }
-  if (image.b64) {
-    return `data:image/png;base64,${image.b64}`
+
+  const dataUrl = buildPhotoBase64DataUrl(image.b64, image.mimeType)
+  if (cacheKey && dataUrl) {
+    photoResultSrcCache.set(cacheKey, dataUrl)
   }
-  if (image.url) {
-    return image.url
+  return dataUrl
+}
+
+export function rememberPhotoResultSrc(
+  image: { id?: string; b64?: string; mimeType?: string },
+  dataUrl: string
+): string {
+  const normalized = dataUrl.trim()
+  if (!normalized) return ''
+
+  const cacheKey = getPhotoResultCacheKey(image)
+  if (cacheKey) {
+    photoResultSrcCache.set(cacheKey, normalized)
   }
-  return ''
+  return normalized
 }

@@ -19,7 +19,6 @@ For commercial licensing, please contact support@quantumnous.com
 import { api } from '@/lib/api'
 import {
   hydratePhotoHistoryItem,
-  hydratePhotoHistoryItems,
 } from './photo-history-image'
 import type { PhotoGenerationSnapshot, PhotoResult } from '../types'
 
@@ -68,6 +67,7 @@ type ApiItemResponse = {
 
 function toPhotoResult(image: PhotoHistoryImageDTO): PhotoResult {
   return {
+    id: image.id,
     url: image.b64 ? undefined : image.url,
     b64: image.b64,
     mimeType: image.mime_type,
@@ -111,7 +111,7 @@ export async function fetchPhotoHistory(
     if (!res.data?.success || !Array.isArray(res.data.data)) {
       return []
     }
-    return hydratePhotoHistoryItems(res.data.data.map(toPhotoHistoryItem))
+    return res.data.data.map(toPhotoHistoryItem)
   } catch {
     return []
   }
