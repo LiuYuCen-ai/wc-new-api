@@ -18,14 +18,17 @@ For commercial licensing, please contact support@quantumnous.com
 */
 import { useQuery } from '@tanstack/react-query'
 import { VChart } from '@visactor/react-vchart'
-import { Users, Loader2 } from 'lucide-react'
+import { Clock3, Eye, Loader2, UserPlus, UserRound, Users } from 'lucide-react'
 import { useEffect, useMemo, useState, useRef, useCallback } from 'react'
 import { useTranslation } from 'react-i18next'
 
 import { Skeleton } from '@/components/ui/skeleton'
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { useTheme } from '@/context/theme-provider'
-import { getUserQuotaDataByUsers } from '@/features/dashboard/api'
+import {
+  getSiteVisitData,
+  getUserQuotaDataByUsers,
+} from '@/features/dashboard/api'
 import {
   TIME_GRANULARITY_OPTIONS,
   TIME_RANGE_PRESETS,
@@ -34,13 +37,17 @@ import {
   getDefaultDays,
   saveGranularity,
   processUserChartData,
+  processVisitorChartData,
 } from '@/features/dashboard/lib'
 import type {
   ProcessedUserChartData,
+  ProcessedVisitorChartData,
   UserChartsFilters,
 } from '@/features/dashboard/types'
 import { getRollingDateRange, type TimeGranularity } from '@/lib/time'
 import { VCHART_OPTION } from '@/lib/vchart'
+
+import { StatCard } from '../ui/stat-card'
 
 let themeManagerPromise: Promise<
   (typeof import('@visactor/vchart'))['ThemeManager']
@@ -60,6 +67,26 @@ const USER_CHARTS: {
     value: 'trend',
     labelKey: 'User Consumption Trend',
     specKey: 'spec_user_trend',
+  },
+]
+
+const VISITOR_CHARTS: {
+  value: string
+  labelKey: string
+  specKey: keyof Pick<
+    ProcessedVisitorChartData,
+    'spec_guest_visit_trend' | 'spec_avg_dwell_trend'
+  >
+}[] = [
+  {
+    value: 'guest-visit',
+    labelKey: 'Guest Visit Trend',
+    specKey: 'spec_guest_visit_trend',
+  },
+  {
+    value: 'dwell',
+    labelKey: 'Average Dwell Time Trend',
+    specKey: 'spec_avg_dwell_trend',
   },
 ]
 
@@ -142,6 +169,51 @@ export function UserCharts(props: UserChartsProps) {
     staleTime: 60_000,
   })
 
+  const { data: visitorResponse, isLoading: isVisitorLoading } = useQuery({
+    queryKey: ['dashboard', 'site-visits', timeRange],
+    queryFn: async () => {
+      try {
+        return await getSiteVisitData({
+          ...timeRange,
+          guests_only: true,
+        })
+      } catch {
+        return {
+          success: false,
+          data: [],
+          summary: {
+            total_visits: 0,
+            unique_visitors: 0,
+            avg_dwell_seconds: 0,
+            registered_users: 0,
+          },
+        }
+      }
+    },
+    select: (res) =>
+      res?.success
+        ? {
+            data: res.data ?? [],
+            summary: res.summary ?? {
+              total_visits: 0,
+              unique_visitors: 0,
+              avg_dwell_seconds: 0,
+              registered_users: 0,
+            },
+          }
+        : {
+            data: [],
+            summary: {
+              total_visits: 0,
+              unique_visitors: 0,
+              avg_dwell_seconds: 0,
+              registered_users: 0,
+            },
+          },
+    staleTime: 60_000,
+    retry: false,
+  })
+
   const chartData = useMemo(
     () =>
       processUserChartData(
@@ -152,6 +224,28 @@ export function UserCharts(props: UserChartsProps) {
       ),
     [userData, isLoading, timeGranularity, t, topUserLimit]
   )
+
+  const visitorChartData = useMemo(
+    () =>
+      processVisitorChartData(
+        isVisitorLoading ? [] : (visitorResponse?.data ?? []),
+        timeGranularity,
+        t
+      ),
+    [visitorResponse?.data, isVisitorLoading, timeGranularity, t]
+  )
+
+  const formatDwellSummary = useCallback((seconds: number) => {
+    if (seconds < 60) return `${Math.round(seconds)}s`
+    const minutes = Math.floor(seconds / 60)
+    const remainSeconds = Math.round(seconds % 60)
+    if (minutes < 60) {
+      return remainSeconds > 0 ? `${minutes}m ${remainSeconds}s` : `${minutes}m`
+    }
+    const hours = Math.floor(minutes / 60)
+    const remainMinutes = minutes % 60
+    return remainMinutes > 0 ? `${hours}h ${remainMinutes}m` : `${hours}h`
+  }, [])
 
   return (
     <div className='space-y-3'>
@@ -220,6 +314,43 @@ export function UserCharts(props: UserChartsProps) {
         )}
       </div>
 
+      <div className='grid gap-3 sm:grid-cols-2 xl:grid-cols-4'>
+        <StatCard
+          title={t('Total Guest Visits')}
+          value={(visitorResponse?.summary.total_visits ?? 0).toLocaleString()}
+          description={t('Guest Visits')}
+          icon={Eye}
+          tone='teal'
+          loading={isVisitorLoading}
+        />
+        <StatCard
+          title={t('Unique Guest Visitors')}
+          value={(visitorResponse?.summary.unique_visitors ?? 0).toLocaleString()}
+          description={t('Guest Visits')}
+          icon={UserRound}
+          tone='rose'
+          loading={isVisitorLoading}
+        />
+        <StatCard
+          title={t('Avg. Dwell Time')}
+          value={formatDwellSummary(
+            visitorResponse?.summary.avg_dwell_seconds ?? 0
+          )}
+          description={t('Average Dwell Time Trend')}
+          icon={Clock3}
+          tone='gray'
+          loading={isVisitorLoading}
+        />
+        <StatCard
+          title={t('Registered Users in Period')}
+          value={(visitorResponse?.summary.registered_users ?? 0).toLocaleString()}
+          description={t('Registered Users in Period')}
+          icon={UserPlus}
+          tone='teal'
+          loading={isVisitorLoading}
+        />
+      </div>
+
       <div className='grid gap-3'>
         {USER_CHARTS.map((chart) => {
           const spec = chartData[chart.specKey]
@@ -242,6 +373,43 @@ export function UserCharts(props: UserChartsProps) {
                   spec && (
                     <VChart
                       key={`user-${chart.value}-${topUserLimit}-${resolvedTheme}`}
+                      spec={{
+                        ...spec,
+                        theme: resolvedTheme === 'dark' ? 'dark' : 'light',
+                        background: 'transparent',
+                      }}
+                      option={VCHART_OPTION}
+                    />
+                  )
+                )}
+              </div>
+            </div>
+          )
+        })}
+      </div>
+
+      <div className='grid gap-3'>
+        {VISITOR_CHARTS.map((chart) => {
+          const spec = visitorChartData[chart.specKey]
+
+          return (
+            <div
+              key={chart.value}
+              className='overflow-hidden rounded-lg border'
+            >
+              <div className='flex w-full items-center gap-2 border-b px-3 py-2 sm:px-5 sm:py-3'>
+                <Eye className='text-muted-foreground/60 size-4' />
+                <div className='text-sm font-semibold'>{t(chart.labelKey)}</div>
+              </div>
+
+              <div className='h-[300px] p-1.5 sm:h-96 sm:p-2'>
+                {isVisitorLoading ? (
+                  <Skeleton className='h-full w-full' />
+                ) : (
+                  themeReady &&
+                  spec && (
+                    <VChart
+                      key={`visitor-${chart.value}-${resolvedTheme}`}
                       spec={{
                         ...spec,
                         theme: resolvedTheme === 'dark' ? 'dark' : 'light',

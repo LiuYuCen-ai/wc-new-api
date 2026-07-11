@@ -268,12 +268,22 @@ func createPhotoGenerationImages(tx *gorm.DB, userId int, historyId int64, start
 }
 
 func trimPhotoGenerationHistoriesTx(tx *gorm.DB, userId int, limit int) ([]PhotoGenerationHistory, error) {
-	var stale []PhotoGenerationHistory
-	err := tx.Where("user_id = ?", userId).
+	var keepIDs []int64
+	err := tx.Model(&PhotoGenerationHistory{}).
+		Where("user_id = ?", userId).
 		Order("created_at DESC").
-		Offset(limit).
-		Preload("Images").
-		Find(&stale).Error
+		Limit(limit).
+		Pluck("id", &keepIDs).Error
+	if err != nil {
+		return nil, err
+	}
+
+	var stale []PhotoGenerationHistory
+	staleQuery := tx.Where("user_id = ?", userId)
+	if len(keepIDs) > 0 {
+		staleQuery = staleQuery.Where("id NOT IN ?", keepIDs)
+	}
+	err = staleQuery.Preload("Images").Find(&stale).Error
 	if err != nil {
 		return nil, err
 	}

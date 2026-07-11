@@ -23,6 +23,8 @@ import type {
   QuotaDataItem,
   ProcessedChartData,
   ProcessedUserChartData,
+  ProcessedVisitorChartData,
+  SiteVisitDataItem,
 } from '@/features/dashboard/types'
 import { getCurrencyDisplay } from '@/lib/currency'
 import { formatChartTime, type TimeGranularity } from '@/lib/time'
@@ -947,6 +949,237 @@ export function processUserChartData(
       },
       point: { visible: false },
       color: { specified: userColorMap },
+      background: { fill: 'transparent' },
+      animation: true,
+    },
+  }
+}
+
+function bucketSiteVisitTimestamp(
+  timestamp: number,
+  granularity: TimeGranularity
+): number {
+  const date = new Date(timestamp * 1000)
+  if (granularity === 'hour') {
+    date.setMinutes(0, 0, 0)
+    return Math.floor(date.getTime() / 1000)
+  }
+  if (granularity === 'week') {
+    const day = date.getDay()
+    const diff = day === 0 ? -6 : 1 - day
+    date.setDate(date.getDate() + diff)
+    date.setHours(0, 0, 0, 0)
+    return Math.floor(date.getTime() / 1000)
+  }
+  date.setHours(0, 0, 0, 0)
+  return Math.floor(date.getTime() / 1000)
+}
+
+function formatDwellDuration(seconds: number): string {
+  if (seconds < 60) return `${Math.round(seconds)}s`
+  const minutes = Math.floor(seconds / 60)
+  const remainSeconds = Math.round(seconds % 60)
+  if (minutes < 60) {
+    return remainSeconds > 0 ? `${minutes}m ${remainSeconds}s` : `${minutes}m`
+  }
+  const hours = Math.floor(minutes / 60)
+  const remainMinutes = minutes % 60
+  return remainMinutes > 0 ? `${hours}h ${remainMinutes}m` : `${hours}h`
+}
+
+export function processVisitorChartData(
+  data: SiteVisitDataItem[],
+  timeGranularity: TimeGranularity = 'day',
+  t?: TFunction
+): ProcessedVisitorChartData {
+  const tt: TFunction = t ?? ((x) => x)
+  const guestData = (data ?? []).filter((item) => item.is_guest !== false)
+
+  const emptyResult: ProcessedVisitorChartData = {
+    spec_guest_visit_trend: {
+      type: 'area',
+      data: [{ id: 'guestVisitTrend', values: [] }],
+      xField: 'Time',
+      yField: 'Visits',
+      title: {
+        visible: true,
+        text: tt('Guest Visit Trend'),
+        subtext: tt('No visitor data available'),
+      },
+      point: { visible: false },
+      background: { fill: 'transparent' },
+    },
+    spec_avg_dwell_trend: {
+      type: 'line',
+      data: [{ id: 'avgDwellTrend', values: [] }],
+      xField: 'Time',
+      yField: 'AvgDwellSeconds',
+      title: {
+        visible: true,
+        text: tt('Average Dwell Time Trend'),
+        subtext: tt('No visitor data available'),
+      },
+      point: { visible: false },
+      background: { fill: 'transparent' },
+    },
+    totalGuestVisits: 0,
+    totalUniqueGuests: 0,
+    avgDwellSeconds: 0,
+  }
+
+  if (guestData.length === 0) return emptyResult
+
+  const bucketMap = new Map<
+    number,
+    {
+      visitCount: number
+      uniqueVisitors: number
+      dwellSeconds: number
+      dwellReports: number
+    }
+  >()
+
+  let totalGuestVisits = 0
+  let totalDwellSeconds = 0
+  let totalDwellReports = 0
+
+  guestData.forEach((item) => {
+    const bucketAt = bucketSiteVisitTimestamp(item.created_at, timeGranularity)
+    const visitCount = Number(item.visit_count) || 0
+    const uniqueVisitors = Number(item.unique_visitors) || 0
+    const dwellSeconds = Number(item.dwell_seconds) || 0
+    const dwellReports = Number(item.dwell_reports) || 0
+
+    totalGuestVisits += visitCount
+    totalDwellSeconds += dwellSeconds
+    totalDwellReports += dwellReports
+
+    const current = bucketMap.get(bucketAt) ?? {
+      visitCount: 0,
+      uniqueVisitors: 0,
+      dwellSeconds: 0,
+      dwellReports: 0,
+    }
+    current.visitCount += visitCount
+    current.uniqueVisitors += uniqueVisitors
+    current.dwellSeconds += dwellSeconds
+    current.dwellReports += dwellReports
+    bucketMap.set(bucketAt, current)
+  })
+
+  const visitTrendValues = Array.from(bucketMap.entries())
+    .sort((a, b) => a[0] - b[0])
+    .map(([bucketAt, bucket]) => ({
+      Time: formatChartTime(bucketAt, timeGranularity),
+      Visits: bucket.visitCount,
+      UniqueVisitors: bucket.uniqueVisitors,
+    }))
+
+  const dwellTrendValues = Array.from(bucketMap.entries())
+    .sort((a, b) => a[0] - b[0])
+    .map(([bucketAt, bucket]) => ({
+      Time: formatChartTime(bucketAt, timeGranularity),
+      AvgDwellSeconds:
+        bucket.dwellReports > 0
+          ? Number((bucket.dwellSeconds / bucket.dwellReports).toFixed(1))
+          : 0,
+      AvgDwellLabel:
+        bucket.dwellReports > 0
+          ? formatDwellDuration(bucket.dwellSeconds / bucket.dwellReports)
+          : '0s',
+    }))
+
+  const totalUniqueGuests = Array.from(bucketMap.values()).reduce(
+    (sum, bucket) => sum + bucket.uniqueVisitors,
+    0
+  )
+  const avgDwellSeconds =
+    totalDwellReports > 0 ? totalDwellSeconds / totalDwellReports : 0
+
+  return {
+    totalGuestVisits,
+    totalUniqueGuests,
+    avgDwellSeconds,
+    spec_guest_visit_trend: {
+      type: 'area',
+      data: [{ id: 'guestVisitTrend', values: visitTrendValues }],
+      xField: 'Time',
+      yField: 'Visits',
+      title: {
+        visible: true,
+        text: tt('Guest Visit Trend'),
+      },
+      axes: [
+        {
+          orient: 'left',
+          title: { visible: true, text: tt('Guest Visits') },
+        },
+      ],
+      tooltip: {
+        mark: {
+          content: [
+            {
+              key: tt('Guest Visits'),
+              value: (datum: Record<string, unknown>) =>
+                Number(datum?.Visits) || 0,
+            },
+            {
+              key: tt('Unique Guest Visitors'),
+              value: (datum: Record<string, unknown>) =>
+                Number(datum?.UniqueVisitors) || 0,
+            },
+          ],
+        },
+      },
+      area: {
+        style: {
+          fillOpacity: 0.2,
+          curveType: 'monotone',
+        },
+      },
+      line: {
+        style: {
+          lineWidth: 2,
+          curveType: 'monotone',
+        },
+      },
+      point: { visible: false },
+      background: { fill: 'transparent' },
+      animation: true,
+    },
+    spec_avg_dwell_trend: {
+      type: 'line',
+      data: [{ id: 'avgDwellTrend', values: dwellTrendValues }],
+      xField: 'Time',
+      yField: 'AvgDwellSeconds',
+      title: {
+        visible: true,
+        text: tt('Average Dwell Time Trend'),
+      },
+      axes: [
+        {
+          orient: 'left',
+          title: { visible: true, text: tt('Avg. Dwell Time') },
+        },
+      ],
+      tooltip: {
+        mark: {
+          content: [
+            {
+              key: tt('Avg. Dwell Time'),
+              value: (datum: Record<string, unknown>) =>
+                String(datum?.AvgDwellLabel ?? '0s'),
+            },
+          ],
+        },
+      },
+      line: {
+        style: {
+          lineWidth: 2,
+          curveType: 'monotone',
+        },
+      },
+      point: { visible: false },
       background: { fill: 'transparent' },
       animation: true,
     },

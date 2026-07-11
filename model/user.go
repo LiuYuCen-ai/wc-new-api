@@ -222,6 +222,14 @@ func CountUsersByEmail(email string) (int64, error) {
 	return count, err
 }
 
+func CountUsersRegisteredBetween(startTime int64, endTime int64) (int64, error) {
+	var count int64
+	err := DB.Model(&User{}).
+		Where("created_at >= ? AND created_at <= ?", startTime, endTime).
+		Count(&count).Error
+	return count, err
+}
+
 func IsEmailAvailable(email string, excludeUserID int) (bool, error) {
 	email = NormalizeEmail(email)
 	if email == "" {

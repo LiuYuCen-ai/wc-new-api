@@ -13,6 +13,11 @@
 #
 # Reset data:
 #   docker compose -f docker-compose.dev.yml down -v
+#
+# Using PostgreSQL instead of MySQL:
+#   1. Comment out the mysql service and SQL_DSN line below
+#   2. Uncomment the postgres service and PostgreSQL SQL_DSN
+#   3. Swap mysql/postgres in depends_on and volumes
 
 services:
   new-api:
@@ -27,7 +32,7 @@ services:
     volumes:
       - dev_data:/data
     environment:
-      - SQL_DSN=postgresql://root:123456@postgres:5432/new-api
+      - SQL_DSN=root:123456@tcp(mysql:3306)/new-api?parseTime=true
       - REDIS_CONN_STRING=redis://redis
       - TZ=Asia/Shanghai
       - BATCH_UPDATE_ENABLED=true
@@ -37,7 +42,7 @@ services:
     depends_on:
       redis:
         condition: service_started
-      postgres:
+      mysql:
         condition: service_healthy
     networks:
       - dev-network
@@ -49,27 +54,48 @@ services:
     networks:
       - dev-network
 
-  postgres:
-    image: postgres:15-alpine
-    container_name: new-api-dev-pg
+  mysql:
+    image: mysql:8.0.34
+    container_name: new-api-dev-mysql
     restart: unless-stopped
     environment:
-      POSTGRES_USER: root
-      POSTGRES_PASSWORD: 123456
-      POSTGRES_DB: new-api
+      MYSQL_ROOT_PASSWORD: 123456
+      MYSQL_DATABASE: new-api
     volumes:
-      - dev_pg_data:/var/lib/postgresql/data
+      - dev_mysql_data:/var/lib/mysql
     networks:
       - dev-network
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U root -d new-api"]
+      test: ["CMD", "mysqladmin", "ping", "-h", "127.0.0.1", "-uroot", "-p123456"]
       interval: 5s
       timeout: 3s
-      retries: 5
+      retries: 10
+      start_period: 30s
+    ports:
+      - "3306:3306"
+
+#  postgres:
+#    image: postgres:15-alpine
+#    container_name: new-api-dev-pg
+#    restart: unless-stopped
+#    environment:
+#      POSTGRES_USER: root
+#      POSTGRES_PASSWORD: 123456
+#      POSTGRES_DB: new-api
+#    volumes:
+#      - dev_pg_data:/var/lib/postgresql/data
+#    networks:
+#      - dev-network
+#    healthcheck:
+#      test: ["CMD-SHELL", "pg_isready -U root -d new-api"]
+#      interval: 5s
+#      timeout: 3s
+#      retries: 5
 
 volumes:
   dev_data:
-  dev_pg_data:
+  dev_mysql_data:
+#  dev_pg_data:
 
 networks:
   dev-network:

@@ -108,6 +108,12 @@ func CriticalRateLimit() func(c *gin.Context) {
 	return defNext
 }
 
+// SiteVisitRateLimit uses a separate bucket from critical auth endpoints so
+// analytics beacons do not compete with login/register rate limits.
+func SiteVisitRateLimit() func(c *gin.Context) {
+	return rateLimitFactory(120, 60*60, "SV")
+}
+
 func DownloadRateLimit() func(c *gin.Context) {
 	return rateLimitFactory(common.DownloadRateLimitNum, common.DownloadRateLimitDuration, "DW")
 }

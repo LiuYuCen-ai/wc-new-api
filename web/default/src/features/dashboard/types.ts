@@ -251,6 +251,31 @@ export interface ProcessedUserChartData {
   spec_user_trend: VChartSpec
 }
 
+export interface SiteVisitDataItem {
+  id?: number
+  created_at: number
+  is_guest?: boolean
+  visit_count?: number
+  dwell_seconds?: number
+  dwell_reports?: number
+  unique_visitors?: number
+}
+
+export interface SiteVisitSummary {
+  total_visits: number
+  unique_visitors: number
+  avg_dwell_seconds: number
+  registered_users: number
+}
+
+export interface ProcessedVisitorChartData {
+  spec_guest_visit_trend: VChartSpec
+  spec_avg_dwell_trend: VChartSpec
+  totalGuestVisits: number
+  totalUniqueGuests: number
+  avgDwellSeconds: number
+}
+
 // ============================================================================
 // Announcement Types
 // ============================================================================

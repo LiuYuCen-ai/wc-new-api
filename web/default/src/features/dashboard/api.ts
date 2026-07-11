@@ -21,6 +21,8 @@ import { api } from '@/lib/api'
 import type {
   FlowQuotaDataItem,
   QuotaDataItem,
+  SiteVisitDataItem,
+  SiteVisitSummary,
   UptimeGroupResult,
 } from './types'
 
@@ -63,6 +65,22 @@ export async function getUserQuotaDataByUsers(params: {
     '/api/data/users',
     { params }
   )
+  return res.data
+}
+
+export async function getSiteVisitData(params: {
+  start_timestamp: number
+  end_timestamp: number
+  guests_only?: boolean
+}) {
+  const res = await api.get<{
+    success: boolean
+    data: SiteVisitDataItem[]
+    summary?: SiteVisitSummary
+  }>('/api/data/visits', {
+    params,
+    skipErrorHandler: true,
+  })
   return res.data
 }
 
