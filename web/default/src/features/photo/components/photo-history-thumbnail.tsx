@@ -93,23 +93,31 @@ export function PhotoHistoryThumbnail(props: PhotoHistoryThumbnailProps) {
   }
 
   return (
-    <button
-      type='button'
-      onClick={() => props.onClick(src)}
+    <div
       className={cn(
-        'bg-muted group relative aspect-square cursor-zoom-in overflow-hidden rounded-lg ring-1 ring-foreground/10',
+        'bg-muted group relative aspect-square overflow-hidden rounded-lg ring-1 ring-foreground/10',
         props.className
       )}
-      aria-label={props.ariaLabel}
     >
-      <img
-        src={src}
-        alt={props.alt}
-        loading='lazy'
-        decoding='async'
-        className='h-full w-full object-cover transition-transform duration-200 group-hover:scale-[1.03]'
-      />
+      <button
+        type='button'
+        onMouseDown={(event) => {
+          if (event.button !== 0) return
+          event.preventDefault()
+          props.onClick(src)
+        }}
+        className='absolute inset-0 cursor-zoom-in'
+        aria-label={props.ariaLabel}
+      >
+        <img
+          src={src}
+          alt={props.alt}
+          loading='lazy'
+          decoding='async'
+          className='h-full w-full object-cover transition-transform duration-200 group-hover:scale-[1.03]'
+        />
+      </button>
       {props.overlay}
-    </button>
+    </div>
   )
 }

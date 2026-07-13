@@ -30,6 +30,16 @@ import { Textarea } from '@/components/ui/textarea'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Switch } from '@/components/ui/switch'
 import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog'
+import {
   Dialog,
   DialogContent,
   DialogHeader,
@@ -56,7 +66,10 @@ import {
   RESOLUTION_SIZE_MAP,
 } from './constants'
 import { PhotoImageMagnifier } from './components/photo-image-magnifier'
-import type { PhotoHistoryItem } from './lib/photo-history-api'
+import {
+  deletePhotoHistoryItem,
+  type PhotoHistoryItem,
+} from './lib/photo-history-api'
 import { hydratePhotoHistoryItem } from './lib/photo-history-image'
 import { getPhotoResultSrc, pickGenerationSnapshot } from './lib/photo-utils'
 import { PhotoHistoryThumbnail } from './components/photo-history-thumbnail'
@@ -161,6 +174,8 @@ export function Photo() {
   const navigate = useNavigate()
   const user = useAuthStore((state) => state.auth.user)
   const [params, setParams] = useState<PhotoParams>(DEFAULT_PARAMS)
+  const [deleteTarget, setDeleteTarget] = useState<HistoryImageEntry | null>(null)
+  const [deleteLoading, setDeleteLoading] = useState(false)
   const history = usePhotoGenerationStore((state) => state.history)
   const historyLoading = usePhotoGenerationStore((state) => state.historyLoading)
   const preview = usePhotoGenerationStore((state) => state.preview)
@@ -328,6 +343,25 @@ export function Photo() {
       ...(state.model ? { model: state.model as PhotoParams['model'] } : {}),
       ...(state.generationParams ?? {}),
     }))
+  }
+
+  const handleDeleteHistoryItem = async () => {
+    if (!deleteTarget || !user?.id) return
+    setDeleteLoading(true)
+    const success = await deletePhotoHistoryItem(deleteTarget.historyItemId)
+    setDeleteLoading(false)
+
+    if (!success) {
+      toast.error(t('Delete failed'))
+      return
+    }
+
+    if (preview?.historyItemId === deleteTarget.historyItemId) {
+      setPreview(null)
+    }
+    setDeleteTarget(null)
+    toast.success(t('Deleted successfully'))
+    void loadHistory(user.id)
   }
 
   const handlePreviewNavigate = (direction: -1 | 1) => {
@@ -1049,6 +1083,7 @@ export function Photo() {
                             item.status !== 'pending' || item.images.length > 0
                         )}
                         onPreview={openPreview}
+                        onRequestDelete={setDeleteTarget}
                       />
                     ) : null}
                   </div>
@@ -1057,6 +1092,34 @@ export function Photo() {
             </Card>
           </div>
         </div>
+
+        <AlertDialog
+          open={Boolean(deleteTarget)}
+          onOpenChange={(open) => {
+            if (!open && !deleteLoading) setDeleteTarget(null)
+          }}
+        >
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>{t('Confirm delete')}</AlertDialogTitle>
+              <AlertDialogDescription>
+                {t('Are you sure you want to delete this image? This action cannot be undone.')}
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogAction
+                disabled={deleteLoading}
+                onClick={(event) => {
+                  event.preventDefault()
+                  void handleDeleteHistoryItem()
+                }}
+              >
+                {deleteLoading ? t('Deleting...') : t('Yes')}
+              </AlertDialogAction>
+              <AlertDialogCancel disabled={deleteLoading}>{t('No')}</AlertDialogCancel>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
 
         <PhotoImagePreviewDialog
           open={Boolean(preview)}
@@ -1180,30 +1243,40 @@ function flattenHistoryImages(history: PhotoHistoryItem[]): HistoryImageEntry[] 
 function HistoryFeed({
   history,
   onPreview,
+  onRequestDelete,
 }: {
   history: PhotoHistoryItem[]
   onPreview: (state: PhotoPreviewState) => void
+  onRequestDelete: (entry: HistoryImageEntry) => void
 }) {
   const { t } = useTranslation()
   const entries = useMemo(() => flattenHistoryImages(history), [history])
 
-  const handleOpenPreview = async (entry: HistoryImageEntry) => {
+  const handleOpenPreview = async (entry: HistoryImageEntry, selectedSrc: string) => {
+    const openWithSources = (sources: string[]) => {
+      if (sources.length === 0) return
+      onPreview({
+        prompt: entry.prompt,
+        model: entry.model,
+        createdAt: entry.createdAt,
+        historyItemId: entry.historyItemId,
+        generationParams: entry.historyItem.generationParams,
+        items: sources.map((src, idx) => ({
+          id: `${entry.historyItemId}-${idx}`,
+          src,
+        })),
+        currentIndex: Math.min(entry.imageIndex, sources.length - 1),
+      })
+    }
+
+    const immediateSources = entry.historyItem.images
+      .map(getPhotoResultSrc)
+      .filter(Boolean)
+    openWithSources(immediateSources.length > 0 ? immediateSources : [selectedSrc])
+
     const hydrated = await hydratePhotoHistoryItem(entry.historyItem)
     const imageSources = hydrated.images.map(getPhotoResultSrc).filter(Boolean)
-    if (imageSources.length === 0) return
-
-    onPreview({
-      prompt: entry.prompt,
-      model: entry.model,
-      createdAt: entry.createdAt,
-      historyItemId: entry.historyItemId,
-      generationParams: entry.historyItem.generationParams,
-      items: imageSources.map((src, idx) => ({
-        id: `${entry.historyItemId}-${idx}`,
-        src,
-      })),
-      currentIndex: entry.imageIndex,
-    })
+    openWithSources(imageSources)
   }
 
   return (
@@ -1214,12 +1287,26 @@ function HistoryFeed({
           image={entry.image}
           alt={entry.prompt}
           ariaLabel={t('View image')}
-          onClick={() => {
-            void handleOpenPreview(entry)
+          onClick={(src) => {
+            void handleOpenPreview(entry, src)
           }}
           overlay={
             <>
               <div className='pointer-events-none absolute inset-0 bg-black/0 transition-colors group-hover:bg-black/10' />
+              <button
+                type='button'
+                onMouseDown={(event) => {
+                  event.stopPropagation()
+                }}
+                onClick={(event) => {
+                  event.stopPropagation()
+                  onRequestDelete(entry)
+                }}
+                className='absolute right-1.5 top-1.5 flex h-6 w-6 items-center justify-center rounded-full bg-black/70 text-white opacity-0 shadow-sm transition-opacity hover:bg-black/85 focus-visible:opacity-100 group-hover:opacity-100'
+                aria-label={t('Delete image')}
+              >
+                <X className='h-3.5 w-3.5' />
+              </button>
               <div className='pointer-events-none absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/75 via-black/35 to-transparent p-2 pt-6 opacity-0 transition-opacity group-hover:opacity-100 group-focus-visible:opacity-100'>
                 <p className='line-clamp-2 text-left text-[11px] leading-tight text-white'>
                   {entry.prompt}
