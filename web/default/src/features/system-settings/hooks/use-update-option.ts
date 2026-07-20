@@ -29,6 +29,7 @@ const STATUS_RELATED_KEYS = [
   'HeaderNavModules',
   'SidebarModulesAdmin',
   'Notice',
+  'NoticeI18nContent',
   'LogConsumeEnabled',
   'QuotaPerUnit',
   'USDExchangeRate',

@@ -109,6 +109,7 @@ export type SystemTaskListResponse = {
 export type SiteSettings = {
   'theme.frontend': string
   Notice: string
+  NoticeI18nContent: string
   SystemName: string
   Logo: string
   Footer: string

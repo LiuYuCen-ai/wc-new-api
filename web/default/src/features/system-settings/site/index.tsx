@@ -27,6 +27,7 @@ import {
 const defaultSiteSettings: SiteSettings = {
   'theme.frontend': 'default',
   Notice: '',
+  NoticeI18nContent: '',
   SystemName: 'New API',
   Logo: '',
   Footer: '',

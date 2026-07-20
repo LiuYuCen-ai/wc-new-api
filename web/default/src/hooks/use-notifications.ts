@@ -18,6 +18,7 @@ For commercial licensing, please contact support@quantumnous.com
 */
 import { useQuery } from '@tanstack/react-query'
 import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useTranslation } from 'react-i18next'
 
 import { useStatus } from '@/hooks/use-status'
 import { getNotice } from '@/lib/api'
@@ -78,6 +79,53 @@ function isPromoNoticeTemplate(value: unknown): value is PromoNoticeTemplate {
   return isRecord(value) && value.template === 'promo'
 }
 
+function getNoticeLanguageCandidates(language: string): string[] {
+  const normalized = language.trim().replaceAll('_', '-').toLowerCase()
+
+  if (normalized === 'zhcn' || normalized === 'zh-cn' || normalized === 'zh-hans') {
+    return ['zhCN', 'zh-CN', 'zh-Hans', 'zh']
+  }
+
+  if (
+    normalized === 'zhtw' ||
+    normalized === 'zh-tw' ||
+    normalized === 'zh-hk' ||
+    normalized === 'zh-mo' ||
+    normalized === 'zh-hant'
+  ) {
+    return ['zhTW', 'zh-TW', 'zh-Hant']
+  }
+
+  const shortLanguage = normalized.split('-')[0]
+  return [...new Set([language, normalized, shortLanguage])]
+}
+
+function pickLocalizedNoticeContent(
+  content: string,
+  i18nContent: string,
+  language: string
+): string {
+  if (!i18nContent) return content
+
+  try {
+    const parsed = JSON.parse(i18nContent) as unknown
+    if (!isRecord(parsed)) return content
+
+    for (const candidate of getNoticeLanguageCandidates(language)) {
+      const localized = parsed[candidate]
+      if (typeof localized === 'string') {
+        if (localized.trim()) return localized.trim()
+        continue
+      }
+      if (localized) return JSON.stringify(localized)
+    }
+
+    return content
+  } catch {
+    return content
+  }
+}
+
 function normalizeNoticeContent(content: string): NoticeRenderContent {
   if (!content) return ''
 
@@ -128,6 +176,7 @@ function normalizeAnnouncementItem(item: Record<string, unknown>): Record<string
 export function useNotifications({
   autoOpenDialog = false,
 }: { autoOpenDialog?: boolean } = {}) {
+  const { i18n } = useTranslation()
   const [popoverOpen, setPopoverOpen] = useState(false)
   const [dialogOpen, setDialogOpenState] = useState(false)
   const [autoDialogOpened, setAutoDialogOpened] = useState(false)
@@ -149,12 +198,16 @@ export function useNotifications({
   // Fetch Announcements from status
   const { status, loading: statusLoading } = useStatus()
   const announcementsEnabled = status?.announcements_enabled ?? false
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  const announcements: Record<string, unknown>[] = announcementsEnabled
-    ? ((status?.announcements || []) as Record<string, unknown>[])
-        .slice(0, 20)
-        .map(normalizeAnnouncementItem)
-    : []
+  const statusAnnouncements = status?.announcements
+  const announcements: Record<string, unknown>[] = useMemo(
+    () =>
+      announcementsEnabled
+        ? ((statusAnnouncements || []) as Record<string, unknown>[])
+            .slice(0, 20)
+            .map(normalizeAnnouncementItem)
+        : [],
+    [announcementsEnabled, statusAnnouncements]
+  )
 
   // Notification store
   const {
@@ -168,9 +221,14 @@ export function useNotifications({
 
   // Extract notice content
   const rawNoticeContent = noticeResponse?.success
-    ? (noticeResponse.data || '').trim()
+    ? String(noticeResponse.data || '').trim()
     : ''
-  const noticeContent = normalizeNoticeContent(rawNoticeContent)
+  const noticeI18nContent = noticeResponse?.success
+    ? String(noticeResponse.i18nContent || '').trim()
+    : ''
+  const noticeContent = normalizeNoticeContent(
+    pickLocalizedNoticeContent(rawNoticeContent, noticeI18nContent, i18n.language)
+  )
   const loading = noticeLoading || statusLoading
 
   // Calculate unread counts

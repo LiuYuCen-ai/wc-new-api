@@ -235,11 +235,12 @@ export function ModelCarousel(props: ModelCarouselProps) {
         const savedContent = isZh
           ? response.data?.content
           : response.data?.i18nContent
-        const content = savedContent?.trim()
-          ? savedContent
-          : isZh
+        let content = savedContent
+        if (!content?.trim()) {
+          content = isZh
             ? DEFAULT_MODEL_CAROUSEL_CONTENT
             : DEFAULT_MODEL_CAROUSEL_I18N_CONTENT
+        }
         const config = parseModelCarouselContentConfig(content)
         setSlides(mergeModelCarouselSlides(defaultSlides, config, i18n.language))
       } catch {
@@ -437,15 +438,15 @@ export function ModelCarousel(props: ModelCarouselProps) {
                       <img
                         src={slide.image}
                         alt={t('{{name}} preview', { name: slide.name })}
-                        className='block aspect-[4/5] w-full object-cover md:aspect-video'
+                        className='block aspect-[4/5] w-full object-cover md:aspect-[16/10] xl:aspect-video'
                       />
                     </div>
 
-                    <div className='absolute inset-0 z-10 flex flex-col justify-between gap-5 overflow-hidden p-5 md:inset-x-0 md:bottom-0 md:top-auto md:flex-row md:items-end md:justify-between md:gap-4'>
+                    <div className='absolute inset-x-0 top-0 z-10 flex flex-col gap-4 p-5 xl:top-auto xl:bottom-0 xl:flex-row xl:items-end xl:justify-between'>
                       {isActive ? (
                         <div
                           key={slide.id}
-                          className='animate-in fade-in-0 slide-in-from-bottom-8 max-w-xl duration-700'
+                          className='animate-in fade-in-0 slide-in-from-bottom-8 max-w-xl duration-700 xl:max-w-[calc(100%-26rem)]'
                         >
                           <p className='text-background/70 text-xs font-semibold tracking-[0.18em] uppercase md:text-base md:tracking-[0.28em]'>
                             {t('Model Series')}
@@ -453,46 +454,46 @@ export function ModelCarousel(props: ModelCarouselProps) {
                           <h3 className='text-background mt-2 break-words text-3xl leading-tight font-semibold tracking-tight md:mt-3 md:text-3xl lg:text-4xl'>
                             {slide.name}
                           </h3>
-                          <p className='text-background/70 mt-2 line-clamp-3 text-sm leading-relaxed md:mt-3 md:line-clamp-none md:text-sm lg:text-base'>
+                          <p className='text-background/70 mt-2 line-clamp-4 text-sm leading-relaxed md:mt-3 md:text-sm lg:text-base xl:line-clamp-none'>
                             {slide.description}
                           </p>
                         </div>
                       ) : (
                         <div className='max-w-xl' />
                       )}
-                      <div className='flex w-full shrink-0 flex-col gap-2 md:w-auto md:pb-2'>
-                        <p className='text-background/85 text-xs font-semibold tracking-[0.18em] uppercase md:text-center md:text-xs md:tracking-[0.24em]'>
-                          {t('Popular Models')}
-                        </p>
-                        <div className='flex items-start gap-2 overflow-x-auto no-scrollbar md:overflow-visible'>
-                          {slide.thumbnails.map((thumb) => (
-                            <div
-                              key={thumb.image}
-                              className='flex w-[44%] min-w-[8.5rem] flex-col gap-1.5 md:w-28 md:min-w-0 lg:w-32'
-                            >
-                              <img
-                                src={thumb.image}
-                                alt=''
-                                className='border-background/40 aspect-[3/2] w-full border object-cover shadow-md'
-                              />
-                              {thumb.model || thumb.price ? (
-                                <div className='min-w-0'>
-                                  <p className='text-background/95 line-clamp-2 text-left font-mono text-[11px] leading-tight font-medium tracking-wide md:truncate md:text-center md:text-xs'>
-                                    {thumb.model}
+                    </div>
+                    <div className='relative z-10 mt-[-8.5rem] flex w-full shrink-0 flex-col gap-2 p-5 pt-0 md:absolute md:right-5 md:bottom-5 md:mt-0 md:w-auto md:p-0 md:pb-2'>
+                      <p className='text-background/85 text-xs font-semibold tracking-[0.18em] uppercase md:text-center md:text-xs md:tracking-[0.24em]'>
+                        {t('Popular Models')}
+                      </p>
+                      <div className='flex items-start gap-2 overflow-x-auto no-scrollbar md:overflow-visible'>
+                        {slide.thumbnails.map((thumb) => (
+                          <div
+                            key={thumb.image}
+                            className='flex w-[32%] min-w-0 flex-col gap-1.5 md:w-28 xl:w-32'
+                          >
+                            <img
+                              src={thumb.image}
+                              alt=''
+                              className='border-background/40 aspect-[3/2] w-full border object-cover shadow-md'
+                            />
+                            {thumb.model || thumb.price ? (
+                              <div className='min-w-0'>
+                                <p className='text-background/95 line-clamp-2 text-left font-mono text-[10px] leading-tight font-medium tracking-wide md:text-xs xl:truncate xl:text-center'>
+                                  {thumb.model}
+                                </p>
+                                {thumb.price ? (
+                                  <p className='mt-0.5 truncate text-left text-[11px] font-semibold tracking-wide text-amber-400/95 md:text-xs xl:text-center'>
+                                    {thumb.price}
                                   </p>
-                                  {thumb.price ? (
-                                    <p className='mt-0.5 truncate text-left text-[11px] font-semibold tracking-wide text-amber-400/95 md:text-center md:text-xs'>
-                                      {thumb.price}
-                                    </p>
-                                  ) : null}
-                                </div>
-                              ) : null}
-                            </div>
-                          ))}
-                        </div>
+                                ) : null}
+                              </div>
+                            ) : null}
+                          </div>
+                        ))}
                       </div>
                     </div>
-                    <div className='pointer-events-none absolute inset-0 bg-gradient-to-t from-black/55 via-black/10 to-transparent' />
+                    <div className='pointer-events-none absolute inset-0 z-[1] bg-gradient-to-t from-black/70 via-black/15 to-transparent' />
                     <div
                       className={cn(
                         'pointer-events-none absolute inset-0 z-20 bg-black/60 transition-opacity duration-500',

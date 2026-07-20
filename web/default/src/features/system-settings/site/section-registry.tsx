@@ -61,7 +61,10 @@ const SITE_SECTIONS = [
     id: 'notice',
     titleKey: 'System Notice',
     build: (settings: SiteSettings) => (
-      <NoticeSection defaultValue={settings.Notice ?? ''} />
+      <NoticeSection
+        defaultValue={settings.Notice ?? ''}
+        i18nDefaultValue={settings.NoticeI18nContent ?? ''}
+      />
     ),
   },
   {

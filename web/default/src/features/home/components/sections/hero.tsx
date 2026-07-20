@@ -271,9 +271,9 @@ export function Hero(props: HeroProps) {
               <>
                 <Button
                   className='group relative overflow-hidden rounded-full bg-gradient-to-r from-yellow-300 via-amber-300 to-yellow-400 px-7 text-slate-950 shadow-[0_12px_30px_-12px_rgba(250,204,21,0.85)] ring-1 ring-white/30 transition-all duration-300 before:absolute before:inset-y-0 before:left-[-45%] before:w-1/3 before:skew-x-[-20deg] before:bg-white/45 before:opacity-0 before:transition-all before:duration-500 hover:-translate-y-0.5 hover:from-yellow-200 hover:via-yellow-300 hover:to-amber-300 hover:shadow-[0_18px_42px_-16px_rgba(250,204,21,0.95)] hover:before:left-[120%] hover:before:opacity-100 focus-visible:ring-yellow-200/70 active:translate-y-0'
-                  render={<Link to='/sign-up' />}
+                  render={<Link to='/dashboard' />}
                 >
-                  <span className='relative z-10'>{t('Start with New API')}</span>
+                  <span className='relative z-10'>{t('Go to Dashboard')}</span>
                   <ArrowRight className='relative z-10 ml-1 size-4 transition-transform duration-200 group-hover:translate-x-1' />
                 </Button>
                 <Button
