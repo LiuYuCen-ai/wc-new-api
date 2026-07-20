@@ -44,6 +44,10 @@ const SITE_SECTIONS = [
           Footer: settings.Footer,
           About: settings.About,
           HomePageContent: settings.HomePageContent,
+          HomePageHeroContent: settings.HomePageHeroContent,
+          HomePageHeroI18nContent: settings.HomePageHeroI18nContent,
+          HomePageModelCarouselContent: settings.HomePageModelCarouselContent,
+          HomePageModelCarouselI18nContent: settings.HomePageModelCarouselI18nContent,
           ServerAddress: settings.ServerAddress,
           legal: {
             user_agreement: settings['legal.user_agreement'],

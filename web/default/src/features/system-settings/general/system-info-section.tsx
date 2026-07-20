@@ -21,6 +21,8 @@ import type { Resolver } from 'react-hook-form'
 import { useTranslation } from 'react-i18next'
 import * as z from 'zod'
 
+import { CopyButton } from '@/components/copy-button'
+import { JsonCodeEditor } from '@/components/json-code-editor'
 import {
   Form,
   FormControl,
@@ -44,6 +46,10 @@ import { Textarea } from '@/components/ui/textarea'
 import { FormDirtyIndicator } from '../components/form-dirty-indicator'
 import { FormNavigationGuard } from '../components/form-navigation-guard'
 import {
+  DEFAULT_MODEL_CAROUSEL_CONTENT,
+  DEFAULT_MODEL_CAROUSEL_I18N_CONTENT,
+} from '@/features/home/model-carousel-defaults'
+import {
   SettingsForm,
   SettingsFormGrid,
   SettingsFormGridItem,
@@ -63,6 +69,10 @@ const _systemInfoSchema = z.object({
   Footer: z.string().optional(),
   About: z.string().optional(),
   HomePageContent: z.string().optional(),
+  HomePageHeroContent: z.string().optional(),
+  HomePageHeroI18nContent: z.string().optional(),
+  HomePageModelCarouselContent: z.string().optional(),
+  HomePageModelCarouselI18nContent: z.string().optional(),
   legal: z.object({
     user_agreement: z.string().optional(),
     privacy_policy: z.string().optional(),
@@ -95,6 +105,14 @@ export function SystemInfoSection({ defaultValues }: SystemInfoSectionProps) {
     Footer: normalizeValue(defaultValues.Footer),
     About: normalizeValue(defaultValues.About),
     HomePageContent: normalizeValue(defaultValues.HomePageContent),
+    HomePageHeroContent: normalizeValue(defaultValues.HomePageHeroContent),
+    HomePageHeroI18nContent: normalizeValue(defaultValues.HomePageHeroI18nContent),
+    HomePageModelCarouselContent:
+      normalizeValue(defaultValues.HomePageModelCarouselContent) ||
+      DEFAULT_MODEL_CAROUSEL_CONTENT,
+    HomePageModelCarouselI18nContent:
+      normalizeValue(defaultValues.HomePageModelCarouselI18nContent) ||
+      DEFAULT_MODEL_CAROUSEL_I18N_CONTENT,
     legal: {
       user_agreement: normalizeValue(defaultValues.legal?.user_agreement),
       privacy_policy: normalizeValue(defaultValues.legal?.privacy_policy),
@@ -113,6 +131,10 @@ export function SystemInfoSection({ defaultValues }: SystemInfoSectionProps) {
     Footer: z.string().optional(),
     About: z.string().optional(),
     HomePageContent: z.string().optional(),
+    HomePageHeroContent: z.string().optional(),
+    HomePageHeroI18nContent: z.string().optional(),
+    HomePageModelCarouselContent: z.string().optional(),
+    HomePageModelCarouselI18nContent: z.string().optional(),
     legal: z.object({
       user_agreement: z.string().optional(),
       privacy_policy: z.string().optional(),
@@ -357,6 +379,110 @@ export function SystemInfoSection({ defaultValues }: SystemInfoSectionProps) {
                         {t(
                           'Content displayed on the home page (supports Markdown)'
                         )}
+                      </FormDescription>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+              </SettingsFormGridItem>
+
+              <SettingsFormGridItem span='full'>
+                <FormField
+                  control={form.control}
+                  name='HomePageHeroContent'
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>{t('Homepage content update')}</FormLabel>
+                      <FormControl>
+                        <Textarea
+                          placeholder={t(
+                            '{"slides":[{"title":"中文标题","desc":"中文描述","model":"模型名称"}]}'
+                          )}
+                          rows={6}
+                          {...field}
+                        />
+                      </FormControl>
+                      <FormDescription>
+                        {t(
+                          'Chinese homepage hero JSON. Used when the selected language is Chinese.'
+                        )}
+                      </FormDescription>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+              </SettingsFormGridItem>
+
+              <SettingsFormGridItem span='full'>
+                <FormField
+                  control={form.control}
+                  name='HomePageHeroI18nContent'
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>{t('Homepage content languages')}</FormLabel>
+                      <FormControl>
+                        <Textarea
+                          placeholder={t(
+                            '{"slides":[{"title":{"en":"English title"},"desc":{"en":"English description"},"model":"model-name"}]}'
+                          )}
+                          rows={6}
+                          {...field}
+                        />
+                      </FormControl>
+                      <FormDescription>
+                        {t(
+                          'Multilingual homepage hero JSON. Used when the selected language is not Chinese.'
+                        )}
+                      </FormDescription>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+              </SettingsFormGridItem>
+
+              <SettingsFormGridItem span='full'>
+                <FormField
+                  control={form.control}
+                  name='HomePageModelCarouselContent'
+                  render={({ field }) => (
+                    <FormItem>
+                      <div className='flex items-center justify-between gap-3'>
+                        <FormLabel>模型轮播</FormLabel>
+                        <CopyButton value={field.value || DEFAULT_MODEL_CAROUSEL_CONTENT} />
+                      </div>
+                      <FormControl>
+                        <JsonCodeEditor
+                          value={field.value || DEFAULT_MODEL_CAROUSEL_CONTENT}
+                          onChange={field.onChange}
+                        />
+                      </FormControl>
+                      <FormDescription>
+                        中文模型轮播 JSON。选择中文时使用。
+                      </FormDescription>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+              </SettingsFormGridItem>
+
+              <SettingsFormGridItem span='full'>
+                <FormField
+                  control={form.control}
+                  name='HomePageModelCarouselI18nContent'
+                  render={({ field }) => (
+                    <FormItem>
+                      <div className='flex items-center justify-between gap-3'>
+                        <FormLabel>模型多语言</FormLabel>
+                        <CopyButton value={field.value || DEFAULT_MODEL_CAROUSEL_I18N_CONTENT} />
+                      </div>
+                      <FormControl>
+                        <JsonCodeEditor
+                          value={field.value || DEFAULT_MODEL_CAROUSEL_I18N_CONTENT}
+                          onChange={field.onChange}
+                        />
+                      </FormControl>
+                      <FormDescription>
+                        多语言模型轮播 JSON。选择非中文语言时使用。
                       </FormDescription>
                       <FormMessage />
                     </FormItem>

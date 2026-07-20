@@ -22,6 +22,7 @@ import { useTranslation } from 'react-i18next'
 
 import { Dialog } from '@/components/dialog'
 import { LanguageSwitcher } from '@/components/language-switcher'
+import { NotificationDialog } from '@/components/notification-dialog'
 import { NotificationPopover } from '@/components/notification-popover'
 import { ProfileDropdown } from '@/components/profile-dropdown'
 import { Button } from '@/components/ui/button'
@@ -87,10 +88,13 @@ export function PublicHeader(props: PublicHeaderProps) {
     logoLoaded,
   } = useSystemConfig()
   const dynamicLinks = useTopNavLinks()
-  const notifications = useNotifications()
   const routerState = useRouterState()
   const pathname = routerState.location.pathname
   const isHomeHero = pathname === '/' && !scrolled
+  const shouldAutoOpenNotificationDialog = showNotifications && pathname === '/'
+  const notifications = useNotifications({
+    autoOpenDialog: shouldAutoOpenNotificationDialog,
+  })
 
   const user = auth.user
   const isAuthenticated = !!user
@@ -467,6 +471,19 @@ export function PublicHeader(props: PublicHeaderProps) {
           </div>
         </div>
       </div>
+
+      {shouldAutoOpenNotificationDialog && (
+        <NotificationDialog
+          open={notifications.dialogOpen}
+          onOpenChange={notifications.setDialogOpen}
+          activeTab={notifications.activeTab}
+          onTabChange={notifications.setActiveTab}
+          notice={notifications.notice}
+          announcements={notifications.announcements}
+          loading={notifications.loading}
+          onCloseToday={notifications.closeToday}
+        />
+      )}
 
       <Dialog
         open={!!authPromptTarget}

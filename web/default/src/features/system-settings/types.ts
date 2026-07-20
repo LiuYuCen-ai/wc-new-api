@@ -114,6 +114,10 @@ export type SiteSettings = {
   Footer: string
   About: string
   HomePageContent: string
+  HomePageHeroContent: string
+  HomePageHeroI18nContent: string
+  HomePageModelCarouselContent: string
+  HomePageModelCarouselI18nContent: string
   ServerAddress: string
   'legal.user_agreement': string
   'legal.privacy_policy': string

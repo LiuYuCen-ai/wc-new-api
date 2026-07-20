@@ -233,6 +233,34 @@ func GetHomePageContent(c *gin.Context) {
 	return
 }
 
+func GetHomePageHeroContent(c *gin.Context) {
+	common.OptionMapRWMutex.RLock()
+	defer common.OptionMapRWMutex.RUnlock()
+	c.JSON(http.StatusOK, gin.H{
+		"success": true,
+		"message": "",
+		"data": gin.H{
+			"content":     common.OptionMap["HomePageHeroContent"],
+			"i18nContent": common.OptionMap["HomePageHeroI18nContent"],
+		},
+	})
+	return
+}
+
+func GetHomePageModelCarouselContent(c *gin.Context) {
+	common.OptionMapRWMutex.RLock()
+	defer common.OptionMapRWMutex.RUnlock()
+	c.JSON(http.StatusOK, gin.H{
+		"success": true,
+		"message": "",
+		"data": gin.H{
+			"content":     common.OptionMap["HomePageModelCarouselContent"],
+			"i18nContent": common.OptionMap["HomePageModelCarouselI18nContent"],
+		},
+	})
+	return
+}
+
 func SendEmailVerification(c *gin.Context) {
 	email := model.NormalizeEmail(c.Query("email"))
 	if err := common.Validate.Var(email, "required,email"); err != nil {
