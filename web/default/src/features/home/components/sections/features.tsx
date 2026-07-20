@@ -23,7 +23,6 @@ import { useTranslation } from 'react-i18next'
 import { codeToHtml } from 'shiki'
 
 import { AnimateInView } from '@/components/animate-in-view'
-import { Button } from '@/components/ui/button'
 import { useCopyToClipboard } from '@/hooks/use-copy-to-clipboard'
 
 interface FeaturesProps {

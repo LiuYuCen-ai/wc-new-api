@@ -25,6 +25,8 @@ import { type TFunction } from 'i18next'
 // Layout - Main base classes
 export const MAIN_BASE_CLASSES = 'bg-background text-foreground w-full'
 
+export const TELEGRAM_CONTACT_URL = 'https://t.me/Ray_zyr'
+
 // Hero section - AI Applications (Left side)
 export const AI_APPLICATIONS = [
   'LobeHub.Color',

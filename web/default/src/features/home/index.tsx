@@ -19,6 +19,7 @@ For commercial licensing, please contact support@quantumnous.com
 import { useCallback, useEffect, useRef } from 'react'
 import { useTranslation } from 'react-i18next'
 
+import { IconTelegram } from '@/assets/brand-icons'
 import { PublicLayout } from '@/components/layout'
 import { Footer } from '@/components/layout/components/footer'
 import { RichContent } from '@/components/rich-content'
@@ -27,6 +28,7 @@ import { isLikelyHtml } from '@/lib/content-format'
 import { useAuthStore } from '@/stores/auth-store'
 
 import { Features, Hero, ModelCarousel, ModelLogoMarquee } from './components'
+import { TELEGRAM_CONTACT_URL } from './constants'
 import { useHomePageContent } from './hooks'
 
 export function Home() {
@@ -119,6 +121,15 @@ export function Home() {
       <ModelCarousel />
       <Features />
       <Footer />
+      <a
+        href={TELEGRAM_CONTACT_URL}
+        target='_blank'
+        rel='noopener noreferrer'
+        aria-label={t('Telegram')}
+        className='fixed right-5 bottom-5 z-50 flex h-12 w-12 items-center justify-center rounded-full bg-gray-500 text-white shadow-[0_8px_22px_rgb(107_114_128_/_0.32)] transition hover:-translate-y-0.5 hover:scale-105 hover:bg-gray-600 hover:shadow-[0_12px_28px_rgb(107_114_128_/_0.42)] focus-visible:ring-2 focus-visible:ring-gray-500 focus-visible:ring-offset-2 focus-visible:outline-none sm:right-6 sm:bottom-6'
+      >
+        <IconTelegram className='h-6 w-6' aria-hidden='true' />
+      </a>
     </PublicLayout>
   )
 }
