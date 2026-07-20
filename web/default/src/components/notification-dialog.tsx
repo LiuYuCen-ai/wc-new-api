@@ -35,9 +35,21 @@ import { ScrollArea } from '@/components/ui/scroll-area'
 import { Separator } from '@/components/ui/separator'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 
+interface PromoNoticeTemplate {
+  template: 'promo'
+  title?: string
+  highlight?: string
+  description?: string
+  align?: 'left' | 'center' | 'right'
+  verticalAlign?: 'top' | 'middle' | 'bottom'
+  highlightSize?: 'small' | 'medium' | 'large' | 'xl'
+}
+
+type NoticeRenderContent = string | PromoNoticeTemplate
+
 interface AnnouncementItem {
   type?: string
-  content?: string
+  content?: NoticeRenderContent
   extra?: string
   publishDate?: string | Date
 }
@@ -47,7 +59,7 @@ interface NotificationDialogProps {
   onOpenChange: (open: boolean) => void
   activeTab: 'notice' | 'announcements'
   onTabChange: (tab: 'notice' | 'announcements') => void
-  notice: string
+  notice: NoticeRenderContent
   announcements: AnnouncementItem[]
   loading: boolean
   onCloseToday: () => void
@@ -126,8 +138,72 @@ function AnnouncementDot({ type }: { type?: string }) {
 function EmptyState({ message }: { message: string }) {
   return (
     <div className='flex flex-col items-center justify-center py-12 text-center'>
-      <p className='text-muted-foreground text-sm'>{message}</p>
+      <p className='text-slate-500 text-sm'>{message}</p>
     </div>
+  )
+}
+
+function isPromoNoticeTemplate(value: NoticeRenderContent | undefined): value is PromoNoticeTemplate {
+  return !!value && typeof value === 'object' && value.template === 'promo'
+}
+
+function getPromoAlignClass(align?: PromoNoticeTemplate['align']): string {
+  if (align === 'left') return 'items-start text-left'
+  if (align === 'right') return 'items-end text-right'
+  return 'items-center text-center'
+}
+
+function getPromoVerticalClass(verticalAlign?: PromoNoticeTemplate['verticalAlign']): string {
+  if (verticalAlign === 'top') return 'justify-start pt-4'
+  if (verticalAlign === 'bottom') return 'justify-end pb-4'
+  return 'justify-center'
+}
+
+function getPromoHighlightSizeClass(size?: PromoNoticeTemplate['highlightSize']): string {
+  if (size === 'small') return 'text-3xl'
+  if (size === 'medium') return 'text-4xl'
+  if (size === 'xl') return 'text-7xl'
+  return 'text-5xl'
+}
+
+function NoticeBody({ content }: { content: NoticeRenderContent }) {
+  if (isPromoNoticeTemplate(content)) {
+    return (
+      <div
+        className={cn(
+          'flex min-h-[20vh] flex-col gap-3 text-slate-700 sm:min-h-[28vh] sm:gap-4 dark:text-slate-200',
+          getPromoAlignClass(content.align),
+          getPromoVerticalClass(content.verticalAlign)
+        )}
+      >
+        {content.title && (
+          <p className='max-w-md text-base leading-7 font-medium'>
+            {content.title}
+          </p>
+        )}
+        {content.highlight && (
+          <div
+            className={cn(
+              'font-extrabold tracking-tight text-[var(--announcement-primary,#facc15)]',
+              getPromoHighlightSizeClass(content.highlightSize)
+            )}
+          >
+            {content.highlight}
+          </div>
+        )}
+        {content.description && (
+          <p className='max-w-md text-base leading-7 font-medium'>
+            {content.description}
+          </p>
+        )}
+      </div>
+    )
+  }
+
+  return (
+    <Markdown className='text-center [&_h1]:my-5 [&_h1]:text-5xl [&_h1]:font-extrabold [&_h1]:tracking-tight [&_h1]:text-[var(--announcement-primary,#facc15)] [&_p]:mx-auto [&_p]:max-w-md [&_p]:text-center [&_strong]:font-bold'>
+      {content}
+    </Markdown>
   )
 }
 
@@ -139,7 +215,7 @@ function NoticeContent({
   loading,
   t,
 }: {
-  notice: string
+  notice: NoticeRenderContent
   loading: boolean
   t: TFunction
 }) {
@@ -152,8 +228,8 @@ function NoticeContent({
   }
 
   return (
-    <ScrollArea className='h-[50vh] pr-4'>
-      <Markdown>{notice}</Markdown>
+    <ScrollArea className='h-[24vh] pr-3 text-slate-700 sm:h-[34vh] sm:pr-4 dark:text-slate-200'>
+      <NoticeBody content={notice} />
     </ScrollArea>
   )
 }
@@ -179,7 +255,7 @@ function AnnouncementsContent({
   }
 
   return (
-    <ScrollArea className='h-[50vh] pr-4'>
+    <ScrollArea className='h-[20vh] pr-3 text-slate-700 sm:h-[clamp(12rem,24vh,17rem)] sm:pr-4 dark:text-slate-200'>
       <div className='space-y-0'>
         {announcements.map((item, idx) => {
           const publishDate = item.publishDate
@@ -199,13 +275,13 @@ function AnnouncementsContent({
                   <AnnouncementDot type={item.type} />
                   <div className='min-w-0 flex-1 space-y-2'>
                     {/* Content */}
-                    <div className='text-sm'>
-                      <Markdown>{item.content || ''}</Markdown>
+                    <div className='text-sm leading-6 text-slate-700 dark:text-slate-200'>
+                      <NoticeBody content={item.content || ''} />
                     </div>
 
                     {/* Extra info */}
                     {item.extra && (
-                      <div className='text-muted-foreground text-xs'>
+                      <div className='text-xs text-slate-500 dark:text-slate-400'>
                         <Markdown>{item.extra}</Markdown>
                       </div>
                     )}
@@ -245,21 +321,29 @@ export function NotificationDialog({
   const { t } = useTranslation()
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className='max-h-[90vh] sm:max-w-2xl'>
+      <DialogContent className='max-h-[58vh] w-[82vw] overflow-hidden border border-white/45 bg-white/72 p-3.5 text-slate-800 shadow-[0_24px_80px_-28px_rgba(15,23,42,0.45)] ring-white/40 backdrop-blur-2xl supports-[backdrop-filter]:bg-white/60 sm:max-h-[76vh] sm:w-full sm:max-w-md sm:p-5 dark:border-white/10 dark:bg-slate-950/62 dark:text-slate-100 dark:ring-white/10'>
         <DialogHeader>
-          <DialogTitle>{t('System Announcements')}</DialogTitle>
+          <DialogTitle className='text-lg font-semibold tracking-tight text-slate-900 dark:text-white'>
+            {t('System Announcements')}
+          </DialogTitle>
         </DialogHeader>
 
         <Tabs
           value={activeTab}
           onValueChange={onTabChange as (value: string) => void}
         >
-          <TabsList className='grid w-full grid-cols-2'>
-            <TabsTrigger value='notice' className='gap-1.5'>
+          <TabsList className='grid w-full grid-cols-2 rounded-full border border-white/55 bg-white/58 p-1 shadow-inner shadow-slate-950/10 backdrop-blur-xl dark:border-white/10 dark:bg-white/10'>
+            <TabsTrigger
+              value='notice'
+              className='gap-1.5 rounded-full text-slate-600 data-[state=active]:bg-white/90 data-[state=active]:text-slate-900 data-[state=active]:shadow-[0_2px_10px_rgba(15,23,42,0.18)] dark:text-slate-300 dark:data-[state=active]:bg-white/18 dark:data-[state=active]:text-white'
+            >
               <Bell className='h-3.5 w-3.5' />
               {t('Notice')}
             </TabsTrigger>
-            <TabsTrigger value='announcements' className='gap-1.5'>
+            <TabsTrigger
+              value='announcements'
+              className='gap-1.5 rounded-full text-slate-600 data-[state=active]:bg-white/90 data-[state=active]:text-slate-900 data-[state=active]:shadow-[0_2px_10px_rgba(15,23,42,0.18)] dark:text-slate-300 dark:data-[state=active]:bg-white/18 dark:data-[state=active]:text-white'
+            >
               <Megaphone className='h-3.5 w-3.5' />
               {t('Timeline')}
             </TabsTrigger>
@@ -278,11 +362,25 @@ export function NotificationDialog({
           </TabsContent>
         </Tabs>
 
-        <DialogFooter className='gap-2'>
-          <Button variant='outline' onClick={onCloseToday}>
+        <DialogFooter className='-mx-3.5 -mb-3.5 flex-col-reverse gap-1.5 border-t border-white/30 bg-white/25 p-3.5 backdrop-blur-xl sm:-mx-5 sm:-mb-5 sm:flex-col-reverse sm:gap-2 sm:p-5 dark:border-white/10 dark:bg-white/5'>
+          <Button
+            variant='ghost'
+            className='h-10 w-full rounded-full bg-white/78 text-slate-600 shadow-sm hover:bg-white/90 hover:text-slate-900 dark:bg-white/12 dark:text-slate-200 dark:hover:bg-white/18 dark:hover:text-white'
+            onClick={onCloseToday}
+          >
             {t('Close Today')}
           </Button>
-          <Button onClick={() => onOpenChange(false)}>{t('Close')}</Button>
+          <Button
+            className='h-10 w-full rounded-full text-slate-950 hover:opacity-90'
+            style={{
+              backgroundColor: 'var(--announcement-primary, #facc15)',
+              boxShadow:
+                '0 10px 28px -14px var(--announcement-primary, #facc15)',
+            }}
+            onClick={() => onOpenChange(false)}
+          >
+            {t('Close')}
+          </Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>

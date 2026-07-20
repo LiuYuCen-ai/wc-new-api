@@ -17,7 +17,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 import { useQuery } from '@tanstack/react-query'
-import { useState, useMemo } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 
 import { useStatus } from '@/hooks/use-status'
 import { getNotice } from '@/lib/api'
@@ -49,7 +49,7 @@ function getAnnouncementKey(item: Record<string, unknown>): string {
 
   const fingerprint = JSON.stringify({
     publishDate: (item?.publishDate as string) || '',
-    content: ((item?.content as string) || '').trim(),
+    content: getUnknownContentKey(item?.content),
     extra: ((item?.extra as string) || '').trim(),
     type: (item?.type as string) || '',
     title: ((item?.title as string) || '').trim(),
@@ -58,13 +58,79 @@ function getAnnouncementKey(item: Record<string, unknown>): string {
   return `hash:${hashString(fingerprint)}`
 }
 
+type PromoNoticeTemplate = {
+  template: 'promo'
+  title?: string
+  highlight?: string
+  description?: string
+  align?: 'left' | 'center' | 'right'
+  verticalAlign?: 'top' | 'middle' | 'bottom'
+  highlightSize?: 'small' | 'medium' | 'large' | 'xl'
+}
+
+type NoticeRenderContent = string | PromoNoticeTemplate
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return !!value && typeof value === 'object' && !Array.isArray(value)
+}
+
+function isPromoNoticeTemplate(value: unknown): value is PromoNoticeTemplate {
+  return isRecord(value) && value.template === 'promo'
+}
+
+function normalizeNoticeContent(content: string): NoticeRenderContent {
+  if (!content) return ''
+
+  try {
+    const parsed = JSON.parse(content) as unknown
+    const notice = Array.isArray(parsed) ? parsed[0] : parsed
+
+    if (isPromoNoticeTemplate(notice)) return notice
+
+    if (isRecord(notice) && 'content' in notice) {
+      const noticeContent = notice.content
+      return isPromoNoticeTemplate(noticeContent)
+        ? noticeContent
+        : String(noticeContent || '').trim()
+    }
+  } catch {
+    return content
+  }
+
+  return content
+}
+
+function getNoticeContentKey(content: NoticeRenderContent): string {
+  return typeof content === 'string' ? content : JSON.stringify(content)
+}
+
+function getUnknownContentKey(content: unknown): string {
+  if (typeof content === 'string') return content.trim()
+  if (!content) return ''
+  return JSON.stringify(content)
+}
+
+function normalizeAnnouncementItem(item: Record<string, unknown>): Record<string, unknown> {
+  const content = item.content
+
+  if (typeof content !== 'string') return item
+
+  return {
+    ...item,
+    content: normalizeNoticeContent(content),
+  }
+}
+
 /**
  * Hook to manage notifications (Notice + Announcements)
  * Provides unread counts and read status management
  */
-export function useNotifications() {
+export function useNotifications({
+  autoOpenDialog = false,
+}: { autoOpenDialog?: boolean } = {}) {
   const [popoverOpen, setPopoverOpen] = useState(false)
   const [dialogOpen, setDialogOpenState] = useState(false)
+  const [autoDialogOpened, setAutoDialogOpened] = useState(false)
   const [activeTab, setActiveTab] = useState<'notice' | 'announcements'>(
     'notice'
   )
@@ -85,7 +151,9 @@ export function useNotifications() {
   const announcementsEnabled = status?.announcements_enabled ?? false
   // eslint-disable-next-line react-hooks/exhaustive-deps
   const announcements: Record<string, unknown>[] = announcementsEnabled
-    ? ((status?.announcements || []) as Record<string, unknown>[]).slice(0, 20)
+    ? ((status?.announcements || []) as Record<string, unknown>[])
+        .slice(0, 20)
+        .map(normalizeAnnouncementItem)
     : []
 
   // Notification store
@@ -95,17 +163,20 @@ export function useNotifications() {
     markAnnouncementsRead,
     isAnnouncementRead,
     setClosedUntilDate,
+    isNoticeClosed,
   } = useNotificationStore()
 
   // Extract notice content
-  const noticeContent = noticeResponse?.success
+  const rawNoticeContent = noticeResponse?.success
     ? (noticeResponse.data || '').trim()
     : ''
+  const noticeContent = normalizeNoticeContent(rawNoticeContent)
+  const loading = noticeLoading || statusLoading
 
   // Calculate unread counts
   const unreadCounts = useMemo(() => {
     const noticeUnread =
-      noticeContent && noticeContent !== lastReadNotice ? 1 : 0
+      noticeContent && getNoticeContentKey(noticeContent) !== lastReadNotice ? 1 : 0
 
     const announcementsUnread = announcements.filter(
       (item: Record<string, unknown>) => {
@@ -121,23 +192,26 @@ export function useNotifications() {
     }
   }, [noticeContent, lastReadNotice, announcements, isAnnouncementRead])
 
-  const markAnnouncementsAsRead = () => {
+  const markAnnouncementsAsRead = useCallback(() => {
     if (announcements.length > 0) {
       const allKeys = announcements.map((item: Record<string, unknown>) =>
         getAnnouncementKey(item)
       )
       markAnnouncementsRead(allKeys)
     }
-  }
+  }, [announcements, markAnnouncementsRead])
 
-  const markVisibleContentAsRead = (tab: 'notice' | 'announcements') => {
-    if (noticeContent) {
-      markNoticeRead(noticeContent)
-    }
-    if (tab === 'announcements') {
-      markAnnouncementsAsRead()
-    }
-  }
+  const markVisibleContentAsRead = useCallback(
+    (tab: 'notice' | 'announcements') => {
+      if (noticeContent) {
+        markNoticeRead(getNoticeContentKey(noticeContent))
+      }
+      if (tab === 'announcements') {
+        markAnnouncementsAsRead()
+      }
+    },
+    [markAnnouncementsAsRead, markNoticeRead, noticeContent]
+  )
 
   // Handle popover open
   const handleOpenPopover = (tab?: 'notice' | 'announcements') => {
@@ -172,6 +246,34 @@ export function useNotifications() {
     setDialogOpenState(false)
   }
 
+  useEffect(() => {
+    if (
+      !autoOpenDialog ||
+      autoDialogOpened ||
+      loading ||
+      dialogOpen ||
+      popoverOpen ||
+      isNoticeClosed()
+    ) {
+      return
+    }
+    if (!noticeContent && announcements.length === 0) return
+
+    const nextTab = noticeContent ? 'notice' : 'announcements'
+    setActiveTab(nextTab)
+    setAutoDialogOpened(true)
+    setDialogOpenState(true)
+  }, [
+    announcements.length,
+    autoDialogOpened,
+    autoOpenDialog,
+    dialogOpen,
+    isNoticeClosed,
+    loading,
+    noticeContent,
+    popoverOpen,
+  ])
+
   const closeToday = () => {
     setClosedUntilDate(new Date().toDateString())
     setDialogOpenState(false)
@@ -190,7 +292,7 @@ export function useNotifications() {
     // Data
     notice: noticeContent,
     announcements,
-    loading: noticeLoading || statusLoading,
+    loading,
 
     // Unread counts
     unreadCount: unreadCounts.total,

@@ -44,10 +44,22 @@ import { getAnnouncementColorClass } from '@/lib/colors'
 import { formatDateTimeObject } from '@/lib/time'
 import { cn } from '@/lib/utils'
 
+interface PromoNoticeTemplate {
+  template: 'promo'
+  title?: string
+  highlight?: string
+  description?: string
+  align?: 'left' | 'center' | 'right'
+  verticalAlign?: 'top' | 'middle' | 'bottom'
+  highlightSize?: 'small' | 'medium' | 'large' | 'xl'
+}
+
+type NoticeRenderContent = string | PromoNoticeTemplate
+
 interface AnnouncementItem {
   id?: number | string
   type?: string
-  content?: string
+  content?: NoticeRenderContent
   extra?: string
   publishDate?: string | Date
 }
@@ -58,7 +70,7 @@ interface NotificationPopoverProps {
   unreadCount: number
   activeTab: 'notice' | 'announcements'
   onTabChange: (tab: 'notice' | 'announcements') => void
-  notice: string
+  notice: NoticeRenderContent
   announcements: AnnouncementItem[]
   loading: boolean
   className?: string
@@ -175,6 +187,28 @@ function EmptyState({
   )
 }
 
+function isPromoNoticeTemplate(value: NoticeRenderContent | undefined): value is PromoNoticeTemplate {
+  return !!value && typeof value === 'object' && value.template === 'promo'
+}
+
+function NoticePreview({ content }: { content: NoticeRenderContent }) {
+  if (isPromoNoticeTemplate(content)) {
+    return (
+      <div className='flex flex-col items-center gap-2 text-center'>
+        {content.title ? <p className='text-sm'>{content.title}</p> : null}
+        {content.highlight ? (
+          <p className='text-3xl font-extrabold text-[var(--announcement-primary,#facc15)]'>
+            {content.highlight}
+          </p>
+        ) : null}
+        {content.description ? <p className='text-sm'>{content.description}</p> : null}
+      </div>
+    )
+  }
+
+  return <RichContent breaks content={content} />
+}
+
 /**
  * Notice tab content
  */
@@ -183,7 +217,7 @@ function NoticeContent({
   loading,
   t,
 }: {
-  notice: string
+  notice: NoticeRenderContent
   loading: boolean
   t: TFunction
 }) {
@@ -205,7 +239,7 @@ function NoticeContent({
 
   return (
     <ScrollArea className='h-[min(52vh,28rem)] pr-3'>
-      <RichContent breaks content={notice} />
+      <NoticePreview content={notice} />
     </ScrollArea>
   )
 }
@@ -260,7 +294,7 @@ function AnnouncementsContent({
                   <AnnouncementDot type={item.type} />
                   <div className='flex min-w-0 flex-1 flex-col gap-2'>
                     <div className='text-sm'>
-                      <RichContent breaks content={item.content || ''} />
+                      <NoticePreview content={item.content || ''} />
                     </div>
 
                     {item.extra ? (

@@ -42,6 +42,37 @@ interface FooterProps {
   className?: string
 }
 
+// FAQ entries rendered inline in the footer (moved out of the landing
+// Features section so they don't occupy a standalone block).
+// Texts are i18n keys resolved via t() at render time.
+const footerFaqItems = [
+  {
+    question: 'Is WebChannel a model provider?',
+    answer:
+      'WebChannel is more like a model access gateway. It handles unified integration, routing, permissions, logs, and usage management, while the underlying models can still come from providers such as OpenAI, Claude, Gemini, DeepSeek, and Qwen.',
+  },
+  {
+    question: 'Is it compatible with the OpenAI API?',
+    answer:
+      'Yes. The goal is to let teams integrate existing applications faster through a compatible interface, while keeping multi-model switching and unified management.',
+  },
+  {
+    question: 'Is it suitable for image generation products?',
+    answer:
+      'Yes. WebChannel can bring image generation, editing, and multimodal capabilities into one unified entry point, making it easy for product teams to choose models, monitor costs, and control permissions.',
+  },
+  {
+    question: 'Can team permissions and costs be managed centrally?',
+    answer:
+      'Yes. You can build team-level management around API keys, groups, quotas, model scopes, and call logs, turning AI capabilities into operable product infrastructure.',
+  },
+  {
+    question: 'How do I troubleshoot model call issues after going live?',
+    answer:
+      'With request logs, channel status, usage data, and routing policies, teams can quickly determine whether an issue comes from business requests, the model provider, or channel configuration.',
+  },
+] as const
+
 const NEW_API_FOOTER_ATTRIBUTION_KEY = [
   'footer',
   'new' + 'api',
@@ -163,7 +194,8 @@ export function Footer(props: FooterProps) {
   } = useSystemConfig()
 
   const displayLogo = systemLogo || props.logo || '/logo.png'
-  const displayName = systemName || props.name || 'New API'
+  const configuredName = systemName || props.name || 'WebChannel'
+  const displayName = configuredName === 'New API' ? 'WebChannel' : configuredName
   const isDemoSiteMode = Boolean(demoSiteEnabled)
   const currentYear = new Date().getFullYear()
 
@@ -256,9 +288,9 @@ export function Footer(props: FooterProps) {
 
   return (
     <footer
-      className={cn('border-border/40 relative z-10 border-t', props.className)}
+      className={cn('relative z-10 border-t border-slate-200 bg-[#f7f7f5]', props.className)}
     >
-      <div className='mx-auto max-w-6xl px-6 py-12 md:py-16'>
+      <div className='mx-auto max-w-6xl px-6 py-10 md:py-14'>
         <div className='flex flex-col justify-between gap-10 md:flex-row md:gap-16'>
           {/* Brand column */}
           <div className='shrink-0'>
@@ -272,9 +304,31 @@ export function Footer(props: FooterProps) {
                 {displayName}
               </span>
             </Link>
-            <p className='text-muted-foreground/60 mt-3 max-w-[200px] text-xs leading-relaxed'>
-              {t('Powerful API Management Platform')}
+            <p className='mt-3 max-w-[240px] text-xs leading-relaxed text-slate-500'>
+              {t('An AI model gateway for teams that unifies model access, governance, and observability.')}
             </p>
+          </div>
+
+          {/* FAQ column */}
+          <div className='min-w-0 flex-1 md:max-w-xl'>
+            <p className='text-muted-foreground/50 mb-3 text-xs font-medium tracking-wider uppercase'>
+              {t('FAQs')}
+            </p>
+            <div className='divide-y divide-slate-200'>
+              {footerFaqItems.map((item) => (
+                <details key={item.question} className='group py-3'>
+                  <summary className='flex cursor-pointer list-none items-center justify-between gap-4 text-sm font-semibold text-slate-800 transition-colors hover:text-slate-950'>
+                    {t(item.question)}
+                    <span className='text-lg leading-none text-purple-600 transition-transform group-open:rotate-45'>
+                      +
+                    </span>
+                  </summary>
+                  <p className='mt-2 text-xs leading-6 text-slate-500'>
+                    {t(item.answer)}
+                  </p>
+                </details>
+              ))}
+            </div>
           </div>
 
           {/* Links columns */}
@@ -300,8 +354,8 @@ export function Footer(props: FooterProps) {
 
         {/* Copyright + optional legal links inline on the left, project
             attribution on the right; wraps on narrow screens. */}
-        <div className='border-border/30 mt-12 flex flex-col items-center justify-between gap-x-3 gap-y-2 border-t pt-6 sm:flex-row'>
-          <div className='text-muted-foreground/40 flex flex-wrap items-center justify-center gap-x-2 gap-y-1 text-xs sm:justify-start'>
+        <div className='mt-10 flex flex-col items-center justify-between gap-x-3 gap-y-2 border-t border-slate-200 pt-6 sm:flex-row'>
+          <div className='flex flex-wrap items-center justify-center gap-x-2 gap-y-1 text-xs text-slate-400 sm:justify-start'>
             <span>
               &copy; {currentYear} {displayName}.{' '}
               {props.copyright ?? t('footer.defaultCopyright')}

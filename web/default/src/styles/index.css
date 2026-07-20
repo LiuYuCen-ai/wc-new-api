@@ -626,3 +626,110 @@ For commercial licensing, please contact support@quantumnous.com
     animation: none !important;
   }
 }
+
+/* ── 首页 Hero 矮屏自适应 ──
+ * 目标：在桌面端（lg 及以上）视口高度不足时让首屏内容
+ * （标题 + 右侧玻璃面板）完整落在一屏内，无需向下滚动。
+ * 关键约束：右侧玻璃面板的内部布局/内容一律不改动、不隐藏——
+ * 预览图、指标卡、路由列表全部保留，视觉与大屏完全一致，
+ * 只通过 zoom 对整个面板做等比缩放让它整体变小。
+ * （zoom 会真实参与布局，面板宽高按比例收缩，不会像
+ * transform: scale 那样留下缩放前的占位空隙。）
+ * 左侧文案区则通过缩小字号与间距来配合。
+ * 这些规则未包裹在 cascade layer 中，因此优先级高于 Tailwind 工具类。 */
+.hero-adaptive__content {
+  --tw-translate-y: 0;
+}
+
+@media (min-width: 1024px) {
+  .hero-adaptive__content {
+    --tw-translate-y: 7rem;
+  }
+}
+
+@media (min-width: 1024px) and (max-height: 860px) {
+  .hero-adaptive {
+    padding-top: 5.5rem;
+    padding-bottom: 2rem;
+  }
+  .hero-adaptive__content {
+    --tw-translate-y: 6rem;
+  }
+  .hero-adaptive__grid {
+    min-height: calc(100svh - 7.5rem);
+    gap: 2rem;
+  }
+  .hero-adaptive__eyebrow {
+    margin-bottom: 1rem;
+    padding-block: 0.375rem;
+    font-size: 0.8125rem;
+  }
+  .hero-adaptive__title {
+    font-size: clamp(2rem, 4.2vw, 3.375rem);
+    line-height: 1.05;
+  }
+  .hero-adaptive__desc {
+    margin-top: 1rem;
+    font-size: 1rem;
+    line-height: 1.6;
+  }
+  .hero-adaptive__cta {
+    margin-top: 1.25rem;
+  }
+  .hero-adaptive__signals {
+    margin-top: 1.25rem;
+  }
+  /* 玻璃面板整体等比缩放（内容原样保留，不隐藏任何区块） */
+  .hero-adaptive__panel {
+    zoom: 0.85;
+  }
+}
+
+@media (min-width: 1024px) and (max-height: 740px) {
+  .hero-adaptive {
+    padding-top: 5rem;
+    padding-bottom: 1.5rem;
+  }
+  .hero-adaptive__content {
+    --tw-translate-y: 4.5rem;
+  }
+  .hero-adaptive__grid {
+    min-height: calc(100svh - 6.5rem);
+  }
+  .hero-adaptive__title {
+    font-size: clamp(1.75rem, 3.6vw, 2.75rem);
+  }
+  .hero-adaptive__desc {
+    margin-top: 0.75rem;
+    font-size: 0.9375rem;
+    display: -webkit-box;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 2;
+    overflow: hidden;
+  }
+  .hero-adaptive__cta {
+    margin-top: 1rem;
+  }
+  .hero-adaptive__signals {
+    margin-top: 1rem;
+  }
+  .hero-adaptive__panel {
+    zoom: 0.72;
+  }
+}
+
+@media (min-width: 1024px) and (max-height: 620px) {
+  .hero-adaptive {
+    padding-top: 4.5rem;
+    padding-bottom: 1rem;
+  }
+  .hero-adaptive__content {
+    --tw-translate-y: 3rem;
+  }
+  .hero-adaptive__grid {
+    min-height: calc(100svh - 5.5rem);
+  }
+  .hero-adaptive__panel {
+    zoom: 0.6;
+  }
+}
