@@ -437,38 +437,38 @@ export function ModelCarousel(props: ModelCarouselProps) {
                       <img
                         src={slide.image}
                         alt={t('{{name}} preview', { name: slide.name })}
-                        className='block aspect-video w-full object-cover'
+                        className='block aspect-[4/5] w-full object-cover md:aspect-video'
                       />
                     </div>
 
-                    <div className='absolute inset-x-0 bottom-0 z-10 flex items-end justify-between gap-4 overflow-hidden p-4 md:p-5'>
+                    <div className='absolute inset-0 z-10 flex flex-col justify-between gap-5 overflow-hidden p-5 md:inset-x-0 md:bottom-0 md:top-auto md:flex-row md:items-end md:justify-between md:gap-4'>
                       {isActive ? (
                         <div
                           key={slide.id}
                           className='animate-in fade-in-0 slide-in-from-bottom-8 max-w-xl duration-700'
                         >
-                          <p className='text-background/70 text-sm tracking-[0.28em] uppercase md:text-base'>
+                          <p className='text-background/70 text-xs font-semibold tracking-[0.18em] uppercase md:text-base md:tracking-[0.28em]'>
                             {t('Model Series')}
                           </p>
-                          <h3 className='text-background mt-3 text-2xl font-semibold tracking-tight md:text-3xl lg:text-4xl'>
+                          <h3 className='text-background mt-2 break-words text-3xl leading-tight font-semibold tracking-tight md:mt-3 md:text-3xl lg:text-4xl'>
                             {slide.name}
                           </h3>
-                          <p className='text-background/60 mt-3 text-xs leading-relaxed md:text-sm lg:text-base'>
+                          <p className='text-background/70 mt-2 line-clamp-3 text-sm leading-relaxed md:mt-3 md:line-clamp-none md:text-sm lg:text-base'>
                             {slide.description}
                           </p>
                         </div>
                       ) : (
                         <div className='max-w-xl' />
                       )}
-                      <div className='flex shrink-0 flex-col gap-2 pb-1 md:pb-2'>
-                        <p className='text-background/80 text-center text-[11px] font-semibold tracking-[0.24em] uppercase md:text-xs'>
+                      <div className='flex w-full shrink-0 flex-col gap-2 md:w-auto md:pb-2'>
+                        <p className='text-background/85 text-xs font-semibold tracking-[0.18em] uppercase md:text-center md:text-xs md:tracking-[0.24em]'>
                           {t('Popular Models')}
                         </p>
-                        <div className='flex items-start gap-2'>
+                        <div className='flex items-start gap-2 overflow-x-auto no-scrollbar md:overflow-visible'>
                           {slide.thumbnails.map((thumb) => (
                             <div
                               key={thumb.image}
-                              className='flex w-20 flex-col gap-1.5 md:w-28 lg:w-32'
+                              className='flex w-[44%] min-w-[8.5rem] flex-col gap-1.5 md:w-28 md:min-w-0 lg:w-32'
                             >
                               <img
                                 src={thumb.image}
@@ -477,11 +477,11 @@ export function ModelCarousel(props: ModelCarouselProps) {
                               />
                               {thumb.model || thumb.price ? (
                                 <div className='min-w-0'>
-                                  <p className='text-background/95 truncate text-center font-mono text-[11px] font-medium tracking-wide md:text-xs'>
+                                  <p className='text-background/95 line-clamp-2 text-left font-mono text-[11px] leading-tight font-medium tracking-wide md:truncate md:text-center md:text-xs'>
                                     {thumb.model}
                                   </p>
                                   {thumb.price ? (
-                                    <p className='mt-0.5 truncate text-center text-[11px] font-semibold tracking-wide text-amber-400/95 md:text-xs'>
+                                    <p className='mt-0.5 truncate text-left text-[11px] font-semibold tracking-wide text-amber-400/95 md:text-center md:text-xs'>
                                       {thumb.price}
                                     </p>
                                   ) : null}
