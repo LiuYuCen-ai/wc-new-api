@@ -2132,6 +2132,7 @@
     "Imagine the pricing table has three groups: default (ratio 1.0), premium (ratio 0.5), and vip (ratio 0.8). Users whose account is in the vip group get user-level perks, and premium is a cheaper channel pool that users can pick for their tokens.": "Imaginez que le tableau tarifaire contient trois groupes : default (taux 1,0), premium (taux 0,5) et vip (taux 0,8). Les utilisateurs du groupe vip bénéficient d’avantages au niveau du compte, et premium est un pool de canaux moins cher que les utilisateurs peuvent choisir pour leurs jetons.",
     "Import to CC Switch": "Importer vers CC Switch",
     "Important": "Important",
+    "Important Notice": "Annonce importante",
     "In JSON, the user group is the outer key and the billing group is the inner key. The example below means: vip users pay 0.8 when billed as standard, and 0.3 when billed as premium.": "En JSON, le groupe d’utilisateurs est la clé externe et le groupe de facturation la clé interne. L’exemple ci-dessous signifie : les utilisateurs vip paient 0,8 sous standard et 0,3 sous premium.",
     "In Progress": "En cours",
     "In the visual editor these appear as Extra visible and Hidden. In JSON, +: (or no prefix) adds a group and -: removes one.": "Dans l’éditeur visuel, ces règles apparaissent comme « Visible en plus » et « Masqué ». En JSON, +: (ou aucun préfixe) ajoute un groupe et -: en retire un.",

@@ -222,7 +222,12 @@ export function PublicHeader(props: PublicHeaderProps) {
                   />
                 )}
               </div>
-              <span className='text-sm font-semibold tracking-tight'>
+              <span
+                className={cn(
+                  'font-semibold tracking-tight',
+                  isHomeHero ? 'text-[15px]' : 'text-sm'
+                )}
+              >
                 {loading ? <Skeleton className='h-4 w-16' /> : displaySiteName}
               </span>
             </Link>
@@ -280,7 +285,7 @@ export function PublicHeader(props: PublicHeaderProps) {
                 <div
                   className={cn(
                     'mx-2 h-4 w-px',
-                    isHomeHero ? 'bg-white/25' : 'bg-border/40'
+                    isHomeHero ? 'bg-white/25' : 'bg-border/30'
                   )}
                 />
               )}

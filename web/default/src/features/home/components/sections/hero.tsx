@@ -70,7 +70,7 @@ const HERO_SLIDES: HeroSlide[] = [
   },
 ]
 
-const ANNOUNCEMENT_BUTTON_COLORS = ['#2C343A', '#8A939C', '#949A97']
+const ANNOUNCEMENT_BUTTON_COLORS = ['#F5C518', '#F5C518', '#F5C518']
 
 function isChineseLanguage(language: string): boolean {
   return language.toLowerCase().startsWith('zh')

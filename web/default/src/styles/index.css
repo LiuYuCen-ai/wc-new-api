@@ -48,6 +48,10 @@ For commercial licensing, please contact support@quantumnous.com
 }
 
 @layer base {
+  :root {
+    --announcement-primary: #F5C518;
+  }
+
   * {
     @apply border-border outline-ring/50;
     scrollbar-width: thin;
