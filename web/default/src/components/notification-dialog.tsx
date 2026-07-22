@@ -16,6 +16,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
+import { Link } from '@tanstack/react-router'
 import type { TFunction } from 'i18next'
 import { Megaphone } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
@@ -30,6 +31,7 @@ import {
 } from '@/components/ui/dialog'
 import { Markdown } from '@/components/ui/markdown'
 import { ScrollArea } from '@/components/ui/scroll-area'
+import { useAuthStore } from '@/stores/auth-store'
 
 interface PromoNoticeTemplate {
   template: 'promo'
@@ -174,6 +176,9 @@ export function NotificationDialog({
   onCloseToday,
 }: NotificationDialogProps) {
   const { t } = useTranslation()
+  const user = useAuthStore((state) => state.auth.user)
+  const showRegisterButton = !user
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className='max-h-[58vh] w-[82vw] overflow-hidden rounded-[28px] border border-white/22 bg-white/12 p-3.5 text-white shadow-[0_20px_45px_rgba(0,0,0,0.28),inset_0_1px_0_rgba(255,255,255,0.28),inset_0_-1px_0_rgba(255,255,255,0.08)] [backdrop-filter:blur(22px)_saturate(150%)] [-webkit-backdrop-filter:blur(22px)_saturate(150%)] sm:max-h-[76vh] sm:w-full sm:max-w-md sm:p-5 dark:border-white/15 dark:bg-white/8 dark:text-white'>
@@ -191,18 +196,21 @@ export function NotificationDialog({
         <DialogFooter className='flex-col-reverse gap-3 bg-transparent sm:flex-col-reverse sm:gap-3'>
           <Button
             variant='ghost'
-            className='h-11 w-full rounded-2xl border border-white/12 bg-white/8 text-white transition-all hover:border-white/20 hover:bg-white/14 hover:text-white dark:border-white/10 dark:bg-white/5 dark:text-white dark:hover:bg-white/10 dark:hover:text-white'
+            className='h-9 w-full border-none bg-transparent text-sm font-medium text-white/86 shadow-none outline-none ring-0 transition-colors hover:bg-transparent hover:text-white focus-visible:border-transparent focus-visible:ring-0 dark:bg-transparent dark:text-white/86 dark:hover:bg-transparent dark:hover:text-white'
             onClick={onCloseToday}
           >
             {t('Close Today')}
           </Button>
-          <Button
-            variant='ghost'
-            className='h-11 w-full rounded-2xl border border-white/12 bg-white/8 text-white transition-all hover:border-white/20 hover:bg-white/14 hover:text-white dark:border-white/10 dark:bg-white/5 dark:text-white dark:hover:bg-white/10 dark:hover:text-white'
-            onClick={() => onOpenChange(false)}
-          >
-            {t('Close')}
-          </Button>
+          {showRegisterButton && (
+            <Button
+              variant='ghost'
+              className='h-11 w-full rounded-2xl border border-white/12 bg-white/8 text-lg font-extrabold text-white transition-all hover:border-white/20 hover:bg-white/14 hover:text-white dark:border-white/10 dark:bg-white/5 dark:text-white dark:hover:bg-white/10 dark:hover:text-white'
+              onClick={() => onOpenChange(false)}
+              render={<Link to='/sign-up' />}
+            >
+              {t('Register now')}
+            </Button>
+          )}
         </DialogFooter>
       </DialogContent>
     </Dialog>
