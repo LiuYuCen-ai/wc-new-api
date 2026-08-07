@@ -20,7 +20,7 @@ import { useMemo, useRef, useState, useEffect } from 'react'
 import { useNavigate } from '@tanstack/react-router'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
-import { Download, Check, ChevronLeft, ChevronRight, ImageIcon, ImagePlus, Loader2, Plus, Sparkles, Wand2, X } from 'lucide-react'
+import { Download, Check, ChevronLeft, ChevronRight, ImageIcon, ImagePlus, Loader2, Paperclip, Plus, Sparkles, Wand2, X } from 'lucide-react'
 import { PublicLayout } from '@/components/layout'
 import { PageTransition } from '@/components/page-transition'
 import { Button } from '@/components/ui/button'
@@ -28,7 +28,6 @@ import { Card, CardContent } from '@/components/ui/card'
 import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
 import { Skeleton } from '@/components/ui/skeleton'
-import { Switch } from '@/components/ui/switch'
 import {
   AlertDialog,
   AlertDialogAction,
@@ -564,7 +563,7 @@ export function Photo() {
   return (
     <PublicLayout>
       <PageTransition>
-        <div className='mx-auto w-full min-w-0 max-w-7xl px-4 py-6 sm:px-6'>
+        <div className='mx-auto w-full min-w-0 max-w-7xl px-4 py-6 pb-52 sm:px-6'>
           {/* Header */}
           <div className='mb-6 flex min-w-0 flex-col gap-2'>
             <div className='flex min-w-0 items-center gap-2'>
@@ -662,18 +661,6 @@ export function Photo() {
                         )
                       })}
                     </div>
-                  </div>
-
-                  {/* Prompt */}
-                  <div className='space-y-2'>
-                    <Label htmlFor='photo-prompt'>{t('Prompt')}</Label>
-                    <Textarea
-                      id='photo-prompt'
-                      rows={5}
-                      value={params.prompt}
-                      onChange={(e) => update('prompt', e.target.value)}
-                      placeholder={t('Photo prompt placeholder')}
-                    />
                   </div>
 
                   {selectedModel.supportsSize ? (
@@ -926,116 +913,6 @@ export function Photo() {
                       </div>
                     </>
                   )}
-
-                  {supportsImageInput ? (
-                    <div className='space-y-2 rounded-lg border border-dashed p-3'>
-                      <input
-                        ref={fileInputRef}
-                        type='file'
-                        accept='image/*'
-                        multiple
-                        className='hidden'
-                        onChange={handleFilesPicked}
-                      />
-                      <div className='flex flex-wrap items-center justify-between gap-2'>
-                        <div className='flex min-w-0 items-center gap-2 font-medium'>
-                          <ImageIcon className='h-4 w-4 shrink-0' />
-                          <span className='min-w-0 break-words'>{t('Image Input')}</span>
-                        </div>
-                        <div className='flex items-center gap-2'>
-                          <Switch
-                            checked={params.imageUrlEnabled}
-                            onCheckedChange={(checked) =>
-                              update('imageUrlEnabled', checked)
-                            }
-                          />
-                          <Button
-                            type='button'
-                            variant='ghost'
-                            size='icon'
-                            className='h-7 w-7'
-                            disabled={
-                              !params.imageUrlEnabled ||
-                              params.imageDataUrls.length >=
-                                MAX_UPLOAD_IMAGES
-                            }
-                            onClick={() =>
-                              fileInputRef.current?.click()
-                            }
-                          >
-                            <Plus className='h-4 w-4' />
-                          </Button>
-                        </div>
-                      </div>
-                      <p className='text-muted-foreground text-xs leading-relaxed break-words'>
-                        {t(
-                          'Enable to add local images as image input for image editing.'
-                        )}
-                      </p>
-                      {params.imageUrlEnabled &&
-                      params.imageDataUrls.length > 0 ? (
-                        <div className='flex flex-wrap gap-2'>
-                          {params.imageDataUrls.map((img, index) => (
-                            <div
-                              key={`${img.name}-${index}`}
-                              className='group relative h-[120px] w-[120px] overflow-hidden rounded-md border bg-muted'
-                            >
-                              <img
-                                src={img.dataUrl}
-                                alt={img.name}
-                                className='h-full w-full object-cover'
-                              />
-                              <Button
-                                type='button'
-                                variant='secondary'
-                                size='icon'
-                                className='absolute right-1 top-1 h-6 w-6 opacity-0 transition-opacity group-hover:opacity-100'
-                                onClick={() =>
-                                  removeImageDataUrl(index)
-                                }
-                              >
-                                <X className='h-3 w-3' />
-                              </Button>
-                            </div>
-                          ))}
-                        </div>
-                      ) : null}
-                      {params.imageUrlEnabled &&
-                      params.imageDataUrls.length === 0 ? (
-                        <button
-                          type='button'
-                          onClick={() =>
-                            fileInputRef.current?.click()
-                          }
-                          className='text-muted-foreground hover:bg-muted/60 hover:text-foreground flex w-full flex-col items-center justify-center gap-2 rounded-md border border-dashed py-6 text-xs transition-colors'
-                        >
-                          <ImagePlus className='h-5 w-5' />
-                          {t(
-                            'Click to upload local images (max {{max}})',
-                            { max: MAX_UPLOAD_IMAGES }
-                          )}
-                        </button>
-                      ) : null}
-                    </div>
-                  ) : null}
-
-                  <Button
-                    type='submit'
-                    disabled={formLoading}
-                    className={cn('w-full', photoWrapButtonClass)}
-                  >
-                    {formLoading ? (
-                      <>
-                        <Loader2 className='mr-2 h-4 w-4 animate-spin' />
-                        {t('Generating...')}
-                      </>
-                    ) : (
-                      <>
-                        <Wand2 className='mr-2 h-4 w-4' />
-                        {t('Generate')}
-                      </>
-                    )}
-                  </Button>
                 </form>
               </CardContent>
             </Card>
@@ -1090,6 +967,113 @@ export function Photo() {
                 )}
               </CardContent>
             </Card>
+          </div>
+        </div>
+
+        {/* Bottom prompt bar (fixed, chat-style) */}
+        <div className='pointer-events-none fixed inset-x-0 bottom-0 z-40'>
+          <div className='mx-auto w-full max-w-7xl px-4 pb-4 sm:px-6'>
+            <form
+              onSubmit={handleSubmit}
+              className='bg-background/95 pointer-events-auto flex flex-col gap-2 rounded-2xl border p-3 shadow-lg backdrop-blur supports-[backdrop-filter]:bg-background/80'
+              aria-label='photo-prompt-bar'
+            >
+              <input
+                ref={fileInputRef}
+                type='file'
+                accept='image/*'
+                multiple
+                className='hidden'
+                onChange={handleFilesPicked}
+              />
+              <Label htmlFor='photo-prompt' className='sr-only'>
+                {t('Prompt')}
+              </Label>
+              <Textarea
+                id='photo-prompt'
+                rows={3}
+                value={params.prompt}
+                onChange={(e) => update('prompt', e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' && !e.shiftKey) {
+                    e.preventDefault()
+                    void handleSubmit()
+                  }
+                }}
+                placeholder={t('Photo prompt placeholder')}
+                className='max-h-48 min-h-20 flex-1 resize-none border-0 bg-transparent px-1 shadow-none focus-visible:ring-0'
+              />
+
+              {supportsImageInput &&
+              params.imageUrlEnabled &&
+              params.imageDataUrls.length > 0 ? (
+                <div className='flex flex-wrap gap-2 px-1'>
+                  {params.imageDataUrls.map((img, index) => (
+                    <div
+                      key={`${img.name}-${index}`}
+                      className='group relative h-16 w-16 overflow-hidden rounded-md border bg-muted'
+                    >
+                      <img
+                        src={img.dataUrl}
+                        alt={img.name}
+                        className='h-full w-full object-cover'
+                      />
+                      <Button
+                        type='button'
+                        variant='secondary'
+                        size='icon'
+                        className='absolute right-0.5 top-0.5 h-5 w-5 opacity-0 transition-opacity group-hover:opacity-100'
+                        onClick={() => removeImageDataUrl(index)}
+                      >
+                        <X className='h-3 w-3' />
+                      </Button>
+                    </div>
+                  ))}
+                </div>
+              ) : null}
+
+              <div className='flex items-center justify-between gap-2'>
+                <div className='flex items-center gap-1'>
+                  {supportsImageInput ? (
+                    <Button
+                      type='button'
+                      variant='ghost'
+                      size='icon'
+                      className='text-muted-foreground h-8 w-8'
+                      disabled={
+                        params.imageDataUrls.length >= MAX_UPLOAD_IMAGES
+                      }
+                      aria-label={t('Image Input')}
+                      onClick={() => {
+                        if (!params.imageUrlEnabled) {
+                          update('imageUrlEnabled', true)
+                        }
+                        fileInputRef.current?.click()
+                      }}
+                    >
+                      <Paperclip className='h-4 w-4' />
+                    </Button>
+                  ) : null}
+                </div>
+                <Button
+                  type='submit'
+                  disabled={formLoading}
+                  className='h-9 shrink-0'
+                >
+                  {formLoading ? (
+                    <>
+                      <Loader2 className='mr-2 h-4 w-4 animate-spin' />
+                      {t('Generating...')}
+                    </>
+                  ) : (
+                    <>
+                      <Wand2 className='mr-2 h-4 w-4' />
+                      {t('Generate')}
+                    </>
+                  )}
+                </Button>
+              </div>
+            </form>
           </div>
         </div>
 

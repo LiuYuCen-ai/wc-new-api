@@ -20,7 +20,7 @@ import { getStatus } from '@/lib/api'
 
 export type ModuleAccess = { enabled: boolean; requireAuth: boolean }
 
-export type HeaderNavModule = 'rankings' | 'pricing' | 'photo'
+export type HeaderNavModule = 'rankings' | 'pricing' | 'photo' | 'video'
 
 export type HeaderNavModules = {
   home: boolean
@@ -28,6 +28,7 @@ export type HeaderNavModules = {
   pricing: ModuleAccess
   rankings: ModuleAccess
   photo: ModuleAccess
+  video: ModuleAccess
   docs: boolean
   about: boolean
   [key: string]: boolean | ModuleAccess
@@ -40,6 +41,7 @@ const DEFAULT_HEADER_NAV_MODULES: HeaderNavModules = {
   rankings: { enabled: true, requireAuth: false },
   docs: true,
   photo: { enabled: true, requireAuth: false },
+  video: { enabled: false, requireAuth: false },
   about: true,
 }
 
@@ -47,6 +49,7 @@ const DEFAULTS: Record<HeaderNavModule, ModuleAccess> = {
   pricing: DEFAULT_HEADER_NAV_MODULES.pricing,
   rankings: DEFAULT_HEADER_NAV_MODULES.rankings,
   photo: DEFAULT_HEADER_NAV_MODULES.photo,
+  video: DEFAULT_HEADER_NAV_MODULES.video,
 }
 
 function cloneHeaderNavDefaults(): HeaderNavModules {
@@ -55,6 +58,7 @@ function cloneHeaderNavDefaults(): HeaderNavModules {
     pricing: { ...DEFAULT_HEADER_NAV_MODULES.pricing },
     rankings: { ...DEFAULT_HEADER_NAV_MODULES.rankings },
     photo: { ...DEFAULT_HEADER_NAV_MODULES.photo },
+    video: { ...DEFAULT_HEADER_NAV_MODULES.video },
   }
 }
 
