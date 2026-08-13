@@ -23,7 +23,7 @@ import { IconBadge, type IconBadgeTone } from '@/components/ui/icon-badge'
 import { Skeleton } from '@/components/ui/skeleton'
 import { cn } from '@/lib/utils'
 
-type StatCardTone = 'accent-1' | 'accent-2' | 'accent-3'
+type StatCardTone = 'accent-1' | 'accent-2' | 'accent-3' | 'rose' | 'teal' | 'gray'
 type StatCardSparklineVariant = 'bars' | 'line'
 type StatCardDetailTone =
   | 'default'
@@ -61,18 +61,27 @@ const TONE_CLASSES: Record<StatCardTone, string> = {
     'from-overview-accent-2/80 via-overview-accent-2/45 to-overview-accent-2/5 dark:from-overview-accent-2/70 dark:via-overview-accent-2/30',
   'accent-3':
     'from-overview-accent-3/80 via-overview-accent-3/45 to-overview-accent-3/5 dark:from-overview-accent-3/70 dark:via-overview-accent-3/30',
+  rose: 'from-rose-500/80 via-rose-300/70 to-rose-200/20 dark:from-rose-400/70 dark:via-rose-500/30 dark:to-rose-500/5',
+  teal: 'from-teal-500/80 via-teal-300/70 to-teal-200/20 dark:from-teal-400/70 dark:via-teal-500/30 dark:to-teal-500/5',
+  gray: 'from-muted-foreground/50 via-muted-foreground/20 to-transparent dark:from-muted-foreground/40 dark:via-muted-foreground/20',
 }
 
 const LINE_TONE_CLASSES: Record<StatCardTone, string> = {
   'accent-1': 'text-overview-accent-1',
   'accent-2': 'text-overview-accent-2',
   'accent-3': 'text-overview-accent-3',
+  rose: 'text-warning',
+  teal: 'text-primary',
+  gray: 'text-muted-foreground',
 }
 
 const ICON_TONE_BY_STAT_TONE: Record<StatCardTone, IconBadgeTone> = {
   'accent-1': 'chart-1',
   'accent-2': 'chart-2',
   'accent-3': 'chart-3',
+  rose: 'warning',
+  teal: 'primary',
+  gray: 'neutral',
 }
 
 const DETAIL_TONE_CLASSES: Record<StatCardDetailTone, string> = {
