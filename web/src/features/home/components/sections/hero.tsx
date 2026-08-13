@@ -45,7 +45,7 @@ type HeroSlide = {
 
 const HERO_SLIDES: HeroSlide[] = [
   {
-    src: '/landing/home-page/home_war.png',
+    src: '/landing/photo/impasto-test-28-war-goddess-poetic-beauty.png',
     title: 'Unified access to next-gen AI image models',
     eyebrow: 'Image Gateway',
     desc: 'Aggregate Gemini, GPT Image, and more image models through one compatible endpoint to build stable, observable, cost-efficient generation services faster.',
