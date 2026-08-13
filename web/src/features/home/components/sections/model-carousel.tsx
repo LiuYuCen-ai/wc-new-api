@@ -21,13 +21,16 @@ import { useTranslation } from 'react-i18next'
 
 import { getHomePageModelCarouselContent } from '../../api'
 import {
+  getLocalizedText,
+  isChineseLanguage,
+  parseSlidesConfig,
+  resolveHomePageLocalizedContent,
+} from '../../lib/home-content'
+import {
   DEFAULT_MODEL_CAROUSEL_CONTENT,
   DEFAULT_MODEL_CAROUSEL_I18N_CONTENT,
 } from '../../model-carousel-defaults'
-import type {
-  HomePageModelCarouselContentConfig,
-  LocalizedText,
-} from '../../types'
+import type { HomePageModelCarouselContentConfig } from '../../types'
 import { ArrowLeft01Icon, ArrowRight01Icon } from '@hugeicons/core-free-icons'
 import { HugeiconsIcon } from '@hugeicons/react'
 import {
@@ -52,52 +55,6 @@ type ModelCarouselSlide = {
   image: string
   thumbnails: ModelCarouselThumbnail[]
   description: string
-}
-
-function isChineseLanguage(language: string): boolean {
-  return language.toLowerCase().startsWith('zh')
-}
-
-function parseModelCarouselContentConfig(
-  content: string | undefined
-): HomePageModelCarouselContentConfig | null {
-  if (!content?.trim()) return null
-  try {
-    const parsed = JSON.parse(content) as unknown
-    if (!parsed || typeof parsed !== 'object') return null
-    const config = parsed as HomePageModelCarouselContentConfig
-    return Array.isArray(config.slides) ? config : null
-  } catch {
-    return null
-  }
-}
-
-function getLocalizedText(
-  value: LocalizedText | undefined,
-  language: string,
-  fallback: string
-): string {
-  if (!value) return fallback
-  if (typeof value === 'string') return value || fallback
-
-  const normalizedLanguage = language.trim().replaceAll('_', '-').toLowerCase()
-  const primaryLanguage = normalizedLanguage.split('-')[0]
-  const compactLanguage = normalizedLanguage.replaceAll('-', '')
-  const languageCandidates = [
-    language,
-    normalizedLanguage,
-    primaryLanguage,
-    compactLanguage,
-    normalizedLanguage === 'zh-cn' ? 'zhCN' : undefined,
-    normalizedLanguage === 'zh-tw' ? 'zhTW' : undefined,
-  ].filter(Boolean) as string[]
-
-  for (const candidate of languageCandidates) {
-    const matched = value[candidate]
-    if (matched) return matched
-  }
-
-  return value.en || value.zhCN || value.zh || fallback
 }
 
 function mergeModelCarouselSlides(
@@ -226,34 +183,33 @@ export function ModelCarousel(props: ModelCarouselProps) {
     let mounted = true
 
     async function loadModelCarouselContent() {
+      const applySlides = (content?: string) => {
+        if (!mounted) return
+        const config = parseSlidesConfig<HomePageModelCarouselContentConfig>(content)
+        setSlides(mergeModelCarouselSlides(defaultSlides, config, i18n.language))
+      }
+
       try {
         const response = await getHomePageModelCarouselContent()
         if (!mounted) return
 
-        // 系统设置里没填时，回退到内置默认 JSON，保证多语言介绍开箱即用
-        const isZh = isChineseLanguage(i18n.language)
-        const savedContent = isZh
-          ? response.data?.content
-          : response.data?.i18nContent
-        let content = savedContent
-        if (!content?.trim()) {
-          content = isZh
+        const savedContent = resolveHomePageLocalizedContent(
+          i18n.language,
+          response.data?.content,
+          response.data?.i18nContent
+        )
+        const content =
+          savedContent ??
+          (isChineseLanguage(i18n.language)
             ? DEFAULT_MODEL_CAROUSEL_CONTENT
-            : DEFAULT_MODEL_CAROUSEL_I18N_CONTENT
-        }
-        const config = parseModelCarouselContentConfig(content)
-        setSlides(mergeModelCarouselSlides(defaultSlides, config, i18n.language))
+            : DEFAULT_MODEL_CAROUSEL_I18N_CONTENT)
+        applySlides(content)
       } catch {
-        if (mounted) {
-          // 接口失败时同样使用内置默认 JSON
-          const fallbackContent = isChineseLanguage(i18n.language)
+        applySlides(
+          isChineseLanguage(i18n.language)
             ? DEFAULT_MODEL_CAROUSEL_CONTENT
             : DEFAULT_MODEL_CAROUSEL_I18N_CONTENT
-          const config = parseModelCarouselContentConfig(fallbackContent)
-          setSlides(
-            mergeModelCarouselSlides(defaultSlides, config, i18n.language)
-          )
-        }
+        )
       }
     }
 
@@ -362,7 +318,7 @@ export function ModelCarousel(props: ModelCarouselProps) {
   }
 
   return (
-    <section className={cn('bg-[#f7f7f5] py-10 lg:py-14', props.className)}>
+    <section className={cn('bg-[#f7f7f5] pt-10 pb-4 lg:pt-14 lg:pb-6', props.className)}>
       <div className='mx-auto mb-6 w-full max-w-7xl px-4 text-center sm:px-6 lg:px-8'>
         <h2 className='text-3xl leading-tight font-bold tracking-tight md:text-5xl'>
           {t('From model access to deployment at scale, WebChannel gets you there in one stop.')}

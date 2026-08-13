@@ -42,6 +42,10 @@ import {
   DEFAULT_MODEL_CAROUSEL_I18N_CONTENT,
 } from '@/features/home/model-carousel-defaults'
 import {
+  DEFAULT_HERO_CONTENT,
+  DEFAULT_HERO_I18N_CONTENT,
+} from '@/features/home/hero-defaults'
+import {
   SettingsForm,
   SettingsFormGrid,
   SettingsFormGridItem,
@@ -90,8 +94,11 @@ export function SystemInfoSection({ defaultValues }: SystemInfoSectionProps) {
     Footer: normalizeValue(defaultValues.Footer),
     About: normalizeValue(defaultValues.About),
     HomePageContent: normalizeValue(defaultValues.HomePageContent),
-    HomePageHeroContent: normalizeValue(defaultValues.HomePageHeroContent),
-    HomePageHeroI18nContent: normalizeValue(defaultValues.HomePageHeroI18nContent),
+    HomePageHeroContent:
+      normalizeValue(defaultValues.HomePageHeroContent) || DEFAULT_HERO_CONTENT,
+    HomePageHeroI18nContent:
+      normalizeValue(defaultValues.HomePageHeroI18nContent) ||
+      DEFAULT_HERO_I18N_CONTENT,
     HomePageModelCarouselContent:
       normalizeValue(defaultValues.HomePageModelCarouselContent) ||
       DEFAULT_MODEL_CAROUSEL_CONTENT,
@@ -295,14 +302,14 @@ export function SystemInfoSection({ defaultValues }: SystemInfoSectionProps) {
                   name='HomePageHeroContent'
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel>{t('Homepage content update')}</FormLabel>
+                      <div className='flex items-center justify-between gap-3'>
+                        <FormLabel>{t('Homepage content update')}</FormLabel>
+                        <CopyButton value={field.value || DEFAULT_HERO_CONTENT} />
+                      </div>
                       <FormControl>
-                        <Textarea
-                          placeholder={t(
-                            '{"slides":[{"title":"中文标题","desc":"中文描述","model":"模型名称"}]}'
-                          )}
-                          rows={6}
-                          {...field}
+                        <JsonCodeEditor
+                          value={field.value || DEFAULT_HERO_CONTENT}
+                          onChange={field.onChange}
                         />
                       </FormControl>
                       <FormDescription>
@@ -322,14 +329,16 @@ export function SystemInfoSection({ defaultValues }: SystemInfoSectionProps) {
                   name='HomePageHeroI18nContent'
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel>{t('Homepage content languages')}</FormLabel>
+                      <div className='flex items-center justify-between gap-3'>
+                        <FormLabel>{t('Homepage content languages')}</FormLabel>
+                        <CopyButton
+                          value={field.value || DEFAULT_HERO_I18N_CONTENT}
+                        />
+                      </div>
                       <FormControl>
-                        <Textarea
-                          placeholder={t(
-                            '{"slides":[{"title":{"en":"English title"},"desc":{"en":"English description"},"model":"model-name"}]}'
-                          )}
-                          rows={6}
-                          {...field}
+                        <JsonCodeEditor
+                          value={field.value || DEFAULT_HERO_I18N_CONTENT}
+                          onChange={field.onChange}
                         />
                       </FormControl>
                       <FormDescription>

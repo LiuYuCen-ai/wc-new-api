@@ -48,10 +48,10 @@ export function AffiliateRewardsCard({
   if (loading) {
     return (
       <Card data-card-hover='false' className='bg-muted/20 py-0'>
-        <CardContent className='grid gap-4 p-3 sm:p-4 lg:grid-cols-[minmax(220px,1fr)_minmax(220px,0.72fr)_minmax(320px,1.15fr)] lg:items-center'>
+        <CardContent className='flex flex-col gap-4 p-3 sm:p-4'>
           <div>
             <Skeleton className='h-5 w-32' />
-            <Skeleton className='mt-2 h-4 w-48' />
+            <Skeleton className='mt-2 h-4 w-full max-w-xs' />
           </div>
           <Skeleton className='h-14 rounded-lg' />
           <Skeleton className='h-10 rounded-lg' />
@@ -64,7 +64,7 @@ export function AffiliateRewardsCard({
 
   return (
     <Card data-card-hover='false' className='bg-muted/20 py-0'>
-      <CardContent className='grid gap-3 p-3 sm:gap-4 sm:p-4 lg:grid-cols-[minmax(200px,1fr)_minmax(180px,0.65fr)_minmax(280px,1fr)] lg:items-center'>
+      <CardContent className='flex flex-col gap-3 p-3 sm:gap-4 sm:p-4'>
         <div className='flex min-w-0 items-center gap-2.5'>
           <IconBadge tone='chart-3'>
             <Share2 />
@@ -73,7 +73,7 @@ export function AffiliateRewardsCard({
             <h3 className='truncate text-sm font-semibold'>
               {t('Referral Program')}
             </h3>
-            <p className='text-muted-foreground line-clamp-1 text-xs'>
+            <p className='text-muted-foreground text-xs leading-relaxed'>
               {t(
                 'Earn rewards when users join through your referral link. Transfer accumulated rewards to your balance anytime.'
               )}
@@ -98,38 +98,45 @@ export function AffiliateRewardsCard({
           ))}
         </div>
 
-        <div className='flex items-center gap-2'>
-          <Input
-            value={affiliateLink}
-            readOnly
-            className='border-muted bg-background/70 h-9 min-w-0 flex-1 font-mono text-xs'
-          />
-          <CopyButton
-            value={affiliateLink}
-            variant='outline'
-            className='bg-background size-9 shrink-0'
-            iconClassName='size-4'
-            tooltip={t('Copy referral link')}
-            aria-label={t('Copy referral link')}
-          />
-          {hasRewards && (
-            <Button
-              onClick={onTransfer}
-              disabled={!complianceConfirmed}
-              className='h-9 shrink-0 px-3'
-              size='sm'
-            >
-              {t('Transfer to Balance')}
-            </Button>
-          )}
+        <div className='flex flex-col gap-2'>
+          <div className='flex min-w-0 flex-col gap-2 sm:flex-row sm:items-center'>
+            <div className='flex min-w-0 flex-1 items-center gap-2'>
+              <Input
+                value={affiliateLink}
+                readOnly
+                onFocus={(event) => event.currentTarget.select()}
+                onClick={(event) => event.currentTarget.select()}
+                aria-label={t('Referral link')}
+                className='border-muted bg-background/70 h-9 min-w-0 flex-1 overflow-x-auto font-mono text-xs'
+              />
+              <CopyButton
+                value={affiliateLink}
+                variant='outline'
+                className='bg-background size-9 shrink-0'
+                iconClassName='size-4'
+                tooltip={t('Copy referral link')}
+                aria-label={t('Copy referral link')}
+              />
+            </div>
+            {hasRewards ? (
+              <Button
+                onClick={onTransfer}
+                disabled={!complianceConfirmed}
+                className='h-9 shrink-0 px-3 sm:w-auto'
+                size='sm'
+              >
+                {t('Transfer to Balance')}
+              </Button>
+            ) : null}
+          </div>
+          {!complianceConfirmed ? (
+            <p className='text-muted-foreground text-xs leading-relaxed'>
+              {t(
+                'Referral reward transfer is disabled until the administrator confirms compliance terms.'
+              )}
+            </p>
+          ) : null}
         </div>
-        {!complianceConfirmed ? (
-          <p className='text-muted-foreground text-xs lg:col-span-3'>
-            {t(
-              'Referral reward transfer is disabled until the administrator confirms compliance terms.'
-            )}
-          </p>
-        ) : null}
       </CardContent>
     </Card>
   )

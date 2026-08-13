@@ -60,6 +60,8 @@ const headerNavSchema = z.object({
   photoRequireAuth: z.boolean(),
   videoEnabled: z.boolean(),
   videoRequireAuth: z.boolean(),
+  studioEnabled: z.boolean(),
+  studioRequireAuth: z.boolean(),
   docs: z.boolean(),
   about: z.boolean(),
 })
@@ -113,6 +115,14 @@ const toFormValues = (config: HeaderNavModulesConfig): HeaderNavFormValues => ({
     config.video?.requireAuth === undefined
       ? HEADER_NAV_DEFAULT.video.requireAuth
       : Boolean(config.video.requireAuth),
+  studioEnabled:
+    config.studio?.enabled === undefined
+      ? HEADER_NAV_DEFAULT.studio.enabled
+      : Boolean(config.studio.enabled),
+  studioRequireAuth:
+    config.studio?.requireAuth === undefined
+      ? HEADER_NAV_DEFAULT.studio.requireAuth
+      : Boolean(config.studio.requireAuth),
   docs:
     config.docs === undefined ? HEADER_NAV_DEFAULT.docs : Boolean(config.docs),
   about:
@@ -164,6 +174,11 @@ export function HeaderNavigationSection({
         ...(config.video ?? HEADER_NAV_DEFAULT.video),
         enabled: values.videoEnabled,
         requireAuth: values.videoRequireAuth,
+      },
+      studio: {
+        ...(config.studio ?? HEADER_NAV_DEFAULT.studio),
+        enabled: values.studioEnabled,
+        requireAuth: values.studioRequireAuth,
       },
     }
 
@@ -217,6 +232,7 @@ export function HeaderNavigationSection({
       | 'rankingsEnabled'
       | 'photoEnabled'
       | 'videoEnabled'
+      | 'studioEnabled'
     title: string
     description: string
     requireAuthTitle: string
@@ -268,6 +284,19 @@ export function HeaderNavigationSection({
       requireAuthTitle: t('Require login to view Quick Video'),
       requireAuthDescription: t(
         'Visitors must authenticate before accessing Quick Video.'
+      ),
+    },
+    {
+      enabledKey: 'studioEnabled',
+      requireAuthKey: 'studioRequireAuth',
+      requireAuthDependsOn: 'studioEnabled',
+      title: t('Studio'),
+      description: t(
+        'Explore leading image and video models. Pick one to start creating.'
+      ),
+      requireAuthTitle: t('Require login to view Studio'),
+      requireAuthDescription: t(
+        'Visitors must authenticate before accessing the Studio.'
       ),
     },
   ]
