@@ -41,6 +41,14 @@ func SetApiRouter(router *gin.Engine) {
 			perfMetricsRoute.GET("", controller.GetPerfMetrics)
 		}
 		apiRouter.GET("/rankings", middleware.HeaderNavModuleAuth("rankings"), controller.GetRankings)
+
+		customVideoRoute := apiRouter.Group("/video/custom")
+		customVideoRoute.Use(middleware.UserAuth())
+		{
+			customVideoRoute.POST("/generations", controller.CreateCustomVideoGeneration)
+			customVideoRoute.GET("/generations/:task_id", controller.GetCustomVideoGeneration)
+		}
+
 		apiRouter.GET("/verification", middleware.EmailVerificationRateLimit(), middleware.TurnstileCheck(), controller.SendEmailVerification)
 		apiRouter.GET("/reset_password", middleware.CriticalRateLimit(), middleware.TurnstileCheck(), controller.SendPasswordResetEmail)
 		apiRouter.POST("/user/reset", middleware.CriticalRateLimit(), anonymousRequestBodyLimit, controller.ResetPassword)

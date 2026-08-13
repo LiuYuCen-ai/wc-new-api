@@ -20,7 +20,7 @@ import { useMemo, useRef, useState, useEffect } from 'react'
 import { useNavigate } from '@tanstack/react-router'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
-import { Download, Check, ChevronLeft, ChevronRight, ImageIcon, ImagePlus, Loader2, Paperclip, Plus, Sparkles, Wand2, X } from 'lucide-react'
+import { Download, Check, ChevronLeft, ChevronRight, Film, ImageIcon, ImagePlus, Loader2, Paperclip, Plus, Sparkles, Wand2, X } from 'lucide-react'
 import { PublicLayout } from '@/components/layout'
 import { PageTransition } from '@/components/page-transition'
 import { Button } from '@/components/ui/button'
@@ -65,6 +65,7 @@ import {
   RESOLUTION_SIZE_MAP,
 } from './constants'
 import { PhotoImageMagnifier } from './components/photo-image-magnifier'
+import { VideoPanel } from './components/video-panel'
 import {
   deletePhotoHistoryItem,
   type PhotoHistoryItem,
@@ -172,6 +173,7 @@ export function Photo() {
   const { t } = useTranslation()
   const navigate = useNavigate()
   const user = useAuthStore((state) => state.auth.user)
+  const [mode, setMode] = useState<'image' | 'video'>('image')
   const [params, setParams] = useState<PhotoParams>(DEFAULT_PARAMS)
   const [deleteTarget, setDeleteTarget] = useState<HistoryImageEntry | null>(null)
   const [deleteLoading, setDeleteLoading] = useState(false)
@@ -579,6 +581,39 @@ export function Photo() {
             </p>
           </div>
 
+          {/* Mode tabs: image / video */}
+          <div className='mb-6 bg-muted/60 inline-flex rounded-lg p-1'>
+            <button
+              type='button'
+              onClick={() => setMode('image')}
+              className={cn(
+                'flex items-center gap-1.5 rounded-md px-4 py-2 text-sm font-semibold transition-all',
+                mode === 'image'
+                  ? 'bg-background text-foreground shadow-sm ring-1 ring-border/60'
+                  : 'text-muted-foreground hover:text-foreground'
+              )}
+            >
+              <ImageIcon className='h-4 w-4' />
+              {t('Image generation')}
+            </button>
+            <button
+              type='button'
+              onClick={() => setMode('video')}
+              className={cn(
+                'flex items-center gap-1.5 rounded-md px-4 py-2 text-sm font-semibold transition-all',
+                mode === 'video'
+                  ? 'bg-background text-foreground shadow-sm ring-1 ring-border/60'
+                  : 'text-muted-foreground hover:text-foreground'
+              )}
+            >
+              <Film className='h-4 w-4' />
+              {t('Video generation')}
+            </button>
+          </div>
+
+          {mode === 'video' ? (
+            <VideoPanel />
+          ) : (
           <div className='grid min-w-0 grid-cols-1 gap-6 lg:grid-cols-[minmax(0,380px)_minmax(0,1fr)]'>
             {/* Left: parameters */}
             <Card className='h-fit min-w-0 lg:sticky lg:top-24'>
@@ -968,9 +1003,11 @@ export function Photo() {
               </CardContent>
             </Card>
           </div>
+          )}
         </div>
 
         {/* Bottom prompt bar (fixed, chat-style) */}
+        {mode === 'image' ? (
         <div className='pointer-events-none fixed inset-x-0 bottom-0 z-40'>
           <div className='mx-auto w-full max-w-7xl px-4 pb-4 sm:px-6'>
             <form
@@ -1076,6 +1113,7 @@ export function Photo() {
             </form>
           </div>
         </div>
+        ) : null}
 
         <AlertDialog
           open={Boolean(deleteTarget)}

@@ -58,6 +58,8 @@ const headerNavSchema = z.object({
   rankingsRequireAuth: z.boolean(),
   photoEnabled: z.boolean(),
   photoRequireAuth: z.boolean(),
+  videoEnabled: z.boolean(),
+  videoRequireAuth: z.boolean(),
   docs: z.boolean(),
   about: z.boolean(),
 })
@@ -103,6 +105,14 @@ const toFormValues = (config: HeaderNavModulesConfig): HeaderNavFormValues => ({
     config.photo?.requireAuth === undefined
       ? HEADER_NAV_DEFAULT.photo.requireAuth
       : Boolean(config.photo.requireAuth),
+  videoEnabled:
+    config.video?.enabled === undefined
+      ? HEADER_NAV_DEFAULT.video.enabled
+      : Boolean(config.video.enabled),
+  videoRequireAuth:
+    config.video?.requireAuth === undefined
+      ? HEADER_NAV_DEFAULT.video.requireAuth
+      : Boolean(config.video.requireAuth),
   docs:
     config.docs === undefined ? HEADER_NAV_DEFAULT.docs : Boolean(config.docs),
   about:
@@ -149,6 +159,11 @@ export function HeaderNavigationSection({
         ...(config.photo ?? HEADER_NAV_DEFAULT.photo),
         enabled: values.photoEnabled,
         requireAuth: values.photoRequireAuth,
+      },
+      video: {
+        ...(config.video ?? HEADER_NAV_DEFAULT.video),
+        enabled: values.videoEnabled,
+        requireAuth: values.videoRequireAuth,
       },
     }
 
@@ -197,7 +212,11 @@ export function HeaderNavigationSection({
   const accessModules: Array<{
     enabledKey: keyof HeaderNavFormValues
     requireAuthKey: keyof HeaderNavFormValues
-    requireAuthDependsOn: 'pricingEnabled' | 'rankingsEnabled' | 'photoEnabled'
+    requireAuthDependsOn:
+      | 'pricingEnabled'
+      | 'rankingsEnabled'
+      | 'photoEnabled'
+      | 'videoEnabled'
     title: string
     description: string
     requireAuthTitle: string
@@ -236,6 +255,19 @@ export function HeaderNavigationSection({
       requireAuthTitle: t('Require login to view Experience Hub'),
       requireAuthDescription: t(
         'Visitors must authenticate before accessing the Experience Hub.'
+      ),
+    },
+    {
+      enabledKey: 'videoEnabled',
+      requireAuthKey: 'videoRequireAuth',
+      requireAuthDependsOn: 'videoEnabled',
+      title: t('Quick Video'),
+      description: t(
+        'Frontend-only video generation playground with manual model input.'
+      ),
+      requireAuthTitle: t('Require login to view Quick Video'),
+      requireAuthDescription: t(
+        'Visitors must authenticate before accessing Quick Video.'
       ),
     },
   ]

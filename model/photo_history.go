@@ -175,6 +175,9 @@ func CreatePhotoGenerationHistory(userId int, input PhotoHistoryCreateInput, sav
 		return trimErr
 	})
 	if err != nil {
+		if existing, getErr := GetPhotoGenerationHistoryByPublicID(userId, history.PublicId); getErr == nil {
+			return existing, nil, nil
+		}
 		return nil, nil, err
 	}
 

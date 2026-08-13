@@ -20,7 +20,7 @@ import { getStatus } from '@/lib/api'
 
 export type ModuleAccess = { enabled: boolean; requireAuth: boolean }
 
-export type HeaderNavModule = 'rankings' | 'pricing' | 'photo' | 'video'
+export type HeaderNavModule = 'rankings' | 'pricing' | 'photo' | 'video' | 'studio'
 
 export type HeaderNavModules = {
   home: boolean
@@ -29,6 +29,7 @@ export type HeaderNavModules = {
   rankings: ModuleAccess
   photo: ModuleAccess
   video: ModuleAccess
+  studio: ModuleAccess
   docs: boolean
   about: boolean
   [key: string]: boolean | ModuleAccess
@@ -41,7 +42,8 @@ const DEFAULT_HEADER_NAV_MODULES: HeaderNavModules = {
   rankings: { enabled: true, requireAuth: false },
   docs: true,
   photo: { enabled: true, requireAuth: false },
-  video: { enabled: false, requireAuth: false },
+  video: { enabled: true, requireAuth: false },
+  studio: { enabled: true, requireAuth: false },
   about: true,
 }
 
@@ -50,6 +52,7 @@ const DEFAULTS: Record<HeaderNavModule, ModuleAccess> = {
   rankings: DEFAULT_HEADER_NAV_MODULES.rankings,
   photo: DEFAULT_HEADER_NAV_MODULES.photo,
   video: DEFAULT_HEADER_NAV_MODULES.video,
+  studio: DEFAULT_HEADER_NAV_MODULES.studio,
 }
 
 function cloneHeaderNavDefaults(): HeaderNavModules {
@@ -59,6 +62,7 @@ function cloneHeaderNavDefaults(): HeaderNavModules {
     rankings: { ...DEFAULT_HEADER_NAV_MODULES.rankings },
     photo: { ...DEFAULT_HEADER_NAV_MODULES.photo },
     video: { ...DEFAULT_HEADER_NAV_MODULES.video },
+    studio: { ...DEFAULT_HEADER_NAV_MODULES.studio },
   }
 }
 
@@ -128,6 +132,14 @@ export function parseHeaderNavModules(raw: unknown): HeaderNavModules {
     }
     if (key === 'photo') {
       result.photo = parseAccess(value, result.photo)
+      return
+    }
+    if (key === 'video') {
+      result.video = parseAccess(value, result.video)
+      return
+    }
+    if (key === 'studio') {
+      result.studio = parseAccess(value, result.studio)
       return
     }
 

@@ -243,17 +243,26 @@ async function finalizeGeneratedHistory(input: {
   if (nextHistory) {
     applyHistoryUpdate(input.userId, nextHistory)
   } else {
-    const created = await savePhotoHistoryItem({
-      id: input.historyId,
-      prompt: input.prompt,
-      model: input.model,
-      images: input.images,
-      generationParams: input.generationParams,
-    })
-    if (created) {
-      applyHistoryUpdate(input.userId, created)
+    const currentHistory = await fetchPhotoHistory(PHOTO_HISTORY_LIMIT)
+    const historyExists = currentHistory.some(
+      (item) => item.id === input.historyId
+    )
+
+    if (historyExists) {
+      applyHistoryUpdate(input.userId, currentHistory)
     } else {
-      await refreshHistoryForUser(input.userId)
+      const created = await savePhotoHistoryItem({
+        id: input.historyId,
+        prompt: input.prompt,
+        model: input.model,
+        images: input.images,
+        generationParams: input.generationParams,
+      })
+      if (created) {
+        applyHistoryUpdate(input.userId, created)
+      } else {
+        await refreshHistoryForUser(input.userId)
+      }
     }
   }
 

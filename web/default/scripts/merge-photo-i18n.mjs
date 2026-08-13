@@ -78,7 +78,7 @@ const PHOTO_KEYS = {
   },
   'Experience Hub': {
     en: 'Experience Hub',
-    zh: '体验中心',
+    zh: '快速生图',
     ja: '体験センター',
     fr: "Centre d'expérience",
     vi: 'Trung tâm trải nghiệm',
