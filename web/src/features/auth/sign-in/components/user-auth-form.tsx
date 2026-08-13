@@ -20,8 +20,7 @@ import { zodResolver } from '@hookform/resolvers/zod'
 import { Link } from '@tanstack/react-router'
 import axios from 'axios'
 import { Loader2, LogIn, KeyRound } from 'lucide-react'
-import { useEffect, useMemo, useState } from 'react'
-import type { FocusEvent } from 'react'
+import { useEffect, useMemo, useState, type FocusEvent } from 'react'
 import { useForm } from 'react-hook-form'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
@@ -415,6 +414,7 @@ export function UserAuthForm({
                     <Input
                       placeholder={t('Enter your username or email')}
                       {...field}
+                      className='bg-white dark:bg-white'
                       onFocus={() => handleFieldFocus('username')}
                       onBlur={(event) => {
                         field.onBlur()
@@ -438,6 +438,7 @@ export function UserAuthForm({
                     <PasswordInput
                       placeholder={t('Enter password')}
                       {...field}
+                      className='bg-white dark:bg-white'
                       onFocus={() => handleFieldFocus('password')}
                       onBlur={(event) => {
                         field.onBlur()
@@ -464,7 +465,7 @@ export function UserAuthForm({
             {/* Submit Button */}
             <Button
               type='submit'
-              className='mt-2 w-full justify-center gap-2'
+              className='mt-2 h-11 w-full justify-center gap-2'
               disabled={isLoading || (requiresLegalConsent && !agreedToLegal)}
             >
               {isLoading ? <Loader2 className='animate-spin' /> : <LogIn />}

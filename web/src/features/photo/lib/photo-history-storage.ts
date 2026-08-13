@@ -16,8 +16,8 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import { getUserId } from '@/features/auth/lib/storage'
 import { api } from '@/lib/api'
+import { useAuthStore } from '@/stores/auth-store'
 import type { PhotoGenerationSnapshot } from '../types'
 import type { PhotoResult } from '../types'
 import {
@@ -84,10 +84,9 @@ function clearLegacyPhotoHistory(userId: number) {
 
 function resolvePhotoHistoryUserId(userId?: number | null): number | null {
   if (userId != null && Number.isFinite(userId)) return userId
-  const savedUserId = getUserId()
-  if (!savedUserId) return null
-  const parsed = Number(savedUserId)
-  return Number.isFinite(parsed) ? parsed : null
+  const savedUserId = useAuthStore.getState().auth.user?.id
+  if (savedUserId == null || !Number.isFinite(savedUserId)) return null
+  return savedUserId
 }
 
 async function migrateLegacyPhotoHistory(userId: number) {

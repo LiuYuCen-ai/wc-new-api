@@ -134,7 +134,6 @@ interface ModelCarouselProps {
 export function ModelCarousel(props: ModelCarouselProps) {
   const { i18n, t } = useTranslation()
   const [api, setApi] = useState<CarouselApi>()
-  const [tabApi, setTabApi] = useState<CarouselApi>()
   const [selectedIndex, setSelectedIndex] = useState(0)
   const autoplayTimerRef = useRef<number | null>(null)
 
@@ -308,11 +307,6 @@ export function ModelCarousel(props: ModelCarouselProps) {
     }
   }, [api])
 
-  useEffect(() => {
-    if (!tabApi) return
-    tabApi.scrollTo(selectedIndex)
-  }, [tabApi, selectedIndex])
-
   const clearAutoplayTimer = useCallback(() => {
     if (autoplayTimerRef.current === null) return
     window.clearTimeout(autoplayTimerRef.current)
@@ -361,42 +355,32 @@ export function ModelCarousel(props: ModelCarouselProps) {
   }
 
   return (
-    <section className={cn('bg-[#f7f7f5] py-10 lg:py-14', props.className)}>
+    <section className={cn('bg-[#f7f7f5] py-10 text-slate-950 lg:py-14', props.className)}>
       <div className='mx-auto mb-6 w-full max-w-7xl px-4 text-center sm:px-6 lg:px-8'>
-        <h2 className='text-3xl leading-tight font-bold tracking-tight md:text-5xl'>
+        <h2 className='text-3xl leading-tight font-bold tracking-tight text-slate-950 md:text-5xl'>
           {t('From model access to deployment at scale, WebChannel gets you there in one stop.')}
         </h2>
         <p className='mx-auto mt-5 max-w-xl text-sm leading-7 text-slate-600 md:text-base'>
           {t('WebChannel is an AI model gateway for teams that unifies models, keys, permissions, routing, logs, and billing, helping products reach production faster and more reliably.')}
         </p>
 
-        <Carousel
-          setApi={setTabApi}
-          opts={{ loop: true, align: 'center', watchDrag: false }}
-          className='mt-6 w-full'
-        >
-          <CarouselContent className='-ml-3'>
-            {slides.map((slide, index) => (
-              <CarouselItem
-                key={slide.id}
-                className='basis-[45%] pl-3 sm:basis-[30%] md:basis-[22%]'
-              >
-                <button
-                  type='button'
-                  onClick={() => handleIndicatorClick(index)}
-                  className={cn(
-                    'w-full whitespace-nowrap rounded-none px-5 py-2 text-sm transition-all duration-300',
-                    selectedIndex === index
-                      ? 'bg-background font-semibold text-foreground shadow-md'
-                      : 'bg-muted/60 font-medium text-muted-foreground/50 hover:bg-muted hover:text-foreground'
-                  )}
-                >
-                  {slide.name}
-                </button>
-              </CarouselItem>
-            ))}
-          </CarouselContent>
-        </Carousel>
+        <div className='mt-6 flex flex-wrap items-center justify-center gap-2'>
+          {slides.map((slide, index) => (
+            <button
+              key={slide.id}
+              type='button'
+              onClick={() => handleIndicatorClick(index)}
+              className={cn(
+                'whitespace-nowrap rounded-none px-4 py-2 text-sm transition-all duration-300',
+                selectedIndex === index
+                  ? 'bg-white font-semibold text-slate-950 shadow-md'
+                  : 'bg-white/70 font-medium text-slate-500 hover:bg-white hover:text-slate-900'
+              )}
+            >
+              {slide.name}
+            </button>
+          ))}
+        </div>
       </div>
 
       <div className='relative'>
@@ -441,19 +425,20 @@ export function ModelCarousel(props: ModelCarouselProps) {
                       />
                     </div>
 
+                    <div className='pointer-events-none absolute inset-0 z-[1] bg-gradient-to-t from-black/80 via-black/35 to-transparent' />
                     <div className='absolute inset-x-0 bottom-0 z-10 flex items-end justify-between gap-4 overflow-hidden p-4 md:p-5'>
                       {isActive ? (
                         <div
                           key={slide.id}
-                          className='animate-in fade-in-0 slide-in-from-bottom-8 max-w-xl duration-700'
+                          className='animate-in fade-in-0 slide-in-from-bottom-8 max-w-xl duration-700 [text-shadow:0_1px_2px_rgba(0,0,0,0.65)]'
                         >
-                          <p className='text-background/70 text-sm tracking-[0.28em] uppercase md:text-base'>
+                          <p className='text-sm tracking-[0.28em] text-white/80 uppercase md:text-base'>
                             {t('Model Series')}
                           </p>
-                          <h3 className='text-background mt-3 text-2xl font-semibold tracking-tight md:text-3xl lg:text-4xl'>
+                          <h3 className='mt-3 text-2xl font-semibold tracking-tight text-white md:text-3xl lg:text-4xl'>
                             {slide.name}
                           </h3>
-                          <p className='text-background/60 mt-3 text-xs leading-relaxed md:text-sm lg:text-base'>
+                          <p className='mt-3 text-xs leading-relaxed text-white/90 md:text-sm lg:text-base'>
                             {slide.description}
                           </p>
                         </div>
@@ -461,7 +446,7 @@ export function ModelCarousel(props: ModelCarouselProps) {
                         <div className='max-w-xl' />
                       )}
                       <div className='flex shrink-0 flex-col gap-2 pb-1 md:pb-2'>
-                        <p className='text-background/80 text-center text-[11px] font-semibold tracking-[0.24em] uppercase md:text-xs'>
+                        <p className='text-center text-[11px] font-semibold tracking-[0.24em] text-white/85 uppercase [text-shadow:0_1px_2px_rgba(0,0,0,0.65)] md:text-xs'>
                           {t('Popular Models')}
                         </p>
                         <div className='flex items-start gap-2'>
@@ -473,15 +458,15 @@ export function ModelCarousel(props: ModelCarouselProps) {
                               <img
                                 src={thumb.image}
                                 alt=''
-                                className='border-background/40 aspect-[3/2] w-full border object-cover shadow-md'
+                                className='aspect-[3/2] w-full border border-white/40 object-cover shadow-md'
                               />
                               {thumb.model || thumb.price ? (
                                 <div className='min-w-0'>
-                                  <p className='text-background/95 truncate text-center font-mono text-[11px] font-medium tracking-wide md:text-xs'>
+                                  <p className='truncate text-center font-mono text-[11px] font-medium tracking-wide text-white [text-shadow:0_1px_2px_rgba(0,0,0,0.65)] md:text-xs'>
                                     {thumb.model}
                                   </p>
                                   {thumb.price ? (
-                                    <p className='mt-0.5 truncate text-center text-[11px] font-semibold tracking-wide text-amber-400/95 md:text-xs'>
+                                    <p className='mt-0.5 truncate text-center text-[11px] font-semibold tracking-wide text-amber-300 md:text-xs'>
                                       {thumb.price}
                                     </p>
                                   ) : null}
@@ -492,7 +477,6 @@ export function ModelCarousel(props: ModelCarouselProps) {
                         </div>
                       </div>
                     </div>
-                    <div className='pointer-events-none absolute inset-0 bg-gradient-to-t from-black/55 via-black/10 to-transparent' />
                     <div
                       className={cn(
                         'pointer-events-none absolute inset-0 z-20 bg-black/60 transition-opacity duration-500',

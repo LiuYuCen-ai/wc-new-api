@@ -38,13 +38,16 @@ export async function getHomePageContent(): Promise<HomePageContentResponse> {
 }
 
 export async function getHomePageHeroContent(): Promise<HomePageHeroContentResponse> {
-  const res = await api.get('/api/home_page_hero_content')
+  const res = await api.get('/api/home_page_hero_content', {
+    skipErrorHandler: true,
+  })
   return res.data
 }
 
 export async function getHomePageModelCarouselContent(): Promise<HomePageModelCarouselContentResponse> {
   const res = await api.get('/api/home_page_model_carousel_content', {
     params: { t: Date.now() },
+    skipErrorHandler: true,
   })
   return res.data
 }

@@ -21,7 +21,6 @@ import { Eye, EyeOff } from 'lucide-react'
 import { t } from 'i18next'
 import { cn } from '@/lib/utils'
 
-import { Button } from './ui/button'
 import { Input } from './ui/input'
 
 type PasswordInputProps = Omit<
@@ -51,10 +50,9 @@ export function PasswordInput({
   }
 
   return (
-    <div className={cn('relative rounded-md', className)}>
+    <div className='relative rounded-md'>
       <Input
         type={showPassword ? 'text' : 'password'}
-        className='pe-10'
         ref={ref}
         disabled={disabled}
         onFocus={(event) => {
@@ -62,15 +60,21 @@ export function PasswordInput({
           onVisibilityChange?.(showPassword)
         }}
         {...props}
+        className={cn('pe-10', className)}
       />
       <div className='pointer-events-none absolute inset-y-0 end-0 flex w-10 items-center justify-center'>
-        <Button
+        <button
           type='button'
-          size='icon'
-          variant='ghost'
           disabled={disabled}
           tabIndex={-1}
-          className='text-muted-foreground hover:text-foreground pointer-events-auto size-8 rounded-md hover:bg-transparent active:not-aria-[haspopup]:translate-y-0'
+          className={cn(
+            'text-muted-foreground pointer-events-auto inline-flex size-7 items-center justify-center rounded-full border-0 bg-transparent',
+            'transition-colors duration-150',
+            'hover:bg-foreground/8 hover:text-foreground',
+            'active:bg-foreground/12 active:text-foreground',
+            'focus-visible:ring-ring/50 focus-visible:ring-2 focus-visible:outline-none',
+            'disabled:pointer-events-none disabled:opacity-50'
+          )}
           onMouseDown={(event) => event.preventDefault()}
           onClick={toggleVisibility}
           aria-label={
@@ -78,12 +82,12 @@ export function PasswordInput({
           }
           aria-pressed={showPassword}
         >
-        {showPassword ? (
-          <Eye size={18} aria-hidden='true' />
-        ) : (
-          <EyeOff size={18} aria-hidden='true' />
-        )}
-        </Button>
+          {showPassword ? (
+            <Eye size={16} aria-hidden='true' />
+          ) : (
+            <EyeOff size={16} aria-hidden='true' />
+          )}
+        </button>
       </div>
     </div>
   )

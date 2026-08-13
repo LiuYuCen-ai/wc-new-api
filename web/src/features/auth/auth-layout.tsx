@@ -25,11 +25,20 @@ import { cn } from '@/lib/utils'
 import { AuthAnimationSidebar } from '@/features/auth/components/auth-animation/auth-animation-panel'
 import { AuthAnimationProvider } from '@/features/auth/context/auth-animation-context'
 
-
 type AuthLayoutProps = {
   children: React.ReactNode
   contentClassName?: string
 }
+
+/** Auth pages always use a white canvas, even when the app theme is dark. */
+const AUTH_CANVAS_CLASS = cn(
+  'min-h-svh bg-white text-zinc-900',
+  // Visible field border on white. FormControl rewrites `data-slot` to
+  // `form-control`, so fill must target the native input.
+  '[--input:oklch(0.7_0_0)]',
+  '[&_input]:bg-white! [&_[data-slot=form-control]]:bg-white!',
+  '[&_[data-slot=input-otp-slot]]:bg-white!'
+)
 
 export function AuthLayout({ children, contentClassName }: AuthLayoutProps) {
   const { t } = useTranslation()
@@ -37,7 +46,7 @@ export function AuthLayout({ children, contentClassName }: AuthLayoutProps) {
 
   return (
     <AuthAnimationProvider>
-      <div className='min-h-svh bg-white'>
+      <div className={AUTH_CANVAS_CLASS}>
         <Link
           to='/'
           className='fixed top-4 left-4 z-30 flex items-center gap-3 text-xl font-semibold text-gray-900 transition-opacity hover:opacity-80 sm:top-8 sm:left-8'
