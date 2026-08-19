@@ -33,6 +33,8 @@ interface PhotoHistoryThumbnailProps {
   alt: string
   ariaLabel: string
   className?: string
+  aspectClassName?: string
+  imageClassName?: string
   onClick: (src: string) => void
   overlay?: ReactNode
 }
@@ -83,7 +85,8 @@ export function PhotoHistoryThumbnail(props: PhotoHistoryThumbnailProps) {
     return (
       <div
         className={cn(
-          'bg-muted aspect-square overflow-hidden rounded-lg ring-1 ring-foreground/10',
+          'bg-muted overflow-hidden rounded-lg ring-1 ring-foreground/10',
+          props.aspectClassName ?? 'aspect-square',
           props.className
         )}
       >
@@ -95,7 +98,8 @@ export function PhotoHistoryThumbnail(props: PhotoHistoryThumbnailProps) {
   return (
     <div
       className={cn(
-        'bg-muted group relative aspect-square overflow-hidden rounded-lg ring-1 ring-foreground/10',
+        'bg-muted group relative overflow-hidden rounded-lg ring-1 ring-foreground/10',
+        props.aspectClassName ?? 'aspect-square',
         props.className
       )}
     >
@@ -114,7 +118,10 @@ export function PhotoHistoryThumbnail(props: PhotoHistoryThumbnailProps) {
           alt={props.alt}
           loading='lazy'
           decoding='async'
-          className='h-full w-full object-cover transition-transform duration-200 group-hover:scale-[1.03]'
+          className={cn(
+            'h-full w-full object-cover transition-transform duration-200 group-hover:scale-[1.03]',
+            props.imageClassName
+          )}
         />
       </button>
       {props.overlay}

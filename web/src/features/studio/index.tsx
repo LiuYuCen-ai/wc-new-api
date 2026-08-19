@@ -16,182 +16,63 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
+import { Activity, Sparkles, Workflow } from 'lucide-react'
 import { useState } from 'react'
-import { useNavigate } from '@tanstack/react-router'
 import { useTranslation } from 'react-i18next'
-import { ImageIcon, Sparkles } from 'lucide-react'
 
 import { PublicLayout } from '@/components/layout'
 import { PageTransition } from '@/components/page-transition'
-import { Badge } from '@/components/ui/badge'
-import { Button } from '@/components/ui/button'
-import { Card } from '@/components/ui/card'
-import { cn } from '@/lib/utils'
 
-import {
-  getStudioModelsByKind,
-  type StudioModel,
-  type StudioModelKind,
-} from './models'
+import { CinematicTransition } from './cinematic-transition'
+import { WorkflowCanvas } from './workflow/workflow-canvas'
 
-type StudioTab = 'all' | StudioModelKind
-
-const TABS: { key: StudioTab; labelKey: string }[] = [
-  { key: 'all', labelKey: 'All' },
-  { key: 'image', labelKey: 'Image models' },
-  { key: 'video', labelKey: 'Video models' },
-]
-
-const SECTIONS: { kind: StudioModelKind; titleKey: string }[] = [
-  { kind: 'image', titleKey: 'Image models' },
-  { kind: 'video', titleKey: 'Video models' },
-]
+import './workflow-studio.css'
 
 export function Studio() {
   const { t } = useTranslation()
-  const navigate = useNavigate()
-  const [activeTab, setActiveTab] = useState<StudioTab>('all')
+  const [showIntro, setShowIntro] = useState(true)
 
-  const openModel = (model: StudioModel) => {
-    navigate({
-      to: '/studio/$model',
-      params: { model: model.slug },
-    })
+  const dismissIntro = () => {
+    setShowIntro(false)
   }
 
-  const renderCard = (model: StudioModel) => (
-    <div
-      key={model.slug}
-      role='button'
-      tabIndex={0}
-      onClick={() => openModel(model)}
-      onKeyDown={(e) => {
-        if (e.key === 'Enter' || e.key === ' ') {
-          e.preventDefault()
-          openModel(model)
-        }
-      }}
-      className='group block h-full w-full min-w-0 cursor-pointer text-left'
-    >
-      <Card className='flex h-full min-w-0 flex-col overflow-hidden pt-0 transition-shadow hover:shadow-lg'>
-        {/* Cover */}
-        <div
-          className={cn(
-            'bg-muted/40 relative w-full shrink-0 overflow-hidden',
-            model.kind === 'video' ? 'aspect-video' : 'aspect-[4/3]'
-          )}
-        >
-          {model.cover ? (
-            <img
-              src={model.cover}
-              alt={model.label}
-              loading='lazy'
-              className='absolute inset-0 h-full w-full object-cover transition-transform duration-300 group-hover:scale-105'
-            />
-          ) : (
-            <div className='flex h-full w-full items-center justify-center'>
-              <ImageIcon className='text-muted-foreground/50 h-10 w-10' />
-            </div>
-          )}
-          {model.isNew && (
-            <Badge className='absolute left-2 top-2 backdrop-blur'>NEW</Badge>
-          )}
-        </div>
-
-        {/* Body */}
-        <div className='flex min-w-0 flex-1 flex-col gap-1.5 p-4'>
-          <div className='flex flex-wrap items-center gap-1.5'>
-            <Badge variant='secondary'>{t(model.tag)}</Badge>
-          </div>
-          <h3 className='truncate text-base font-semibold tracking-tight'>
-            {model.label}
-          </h3>
-          <p className='text-muted-foreground line-clamp-2 min-h-[2.5rem] text-sm leading-relaxed break-words'>
-            {t(model.description)}
-          </p>
-          <div className='mt-auto flex items-center justify-between gap-2 pt-2'>
-            <span className='text-muted-foreground truncate text-xs font-medium'>
-              {model.vendor}
-            </span>
-            <Button
-              type='button'
-              size='sm'
-              className='shrink-0'
-              onClick={(e) => {
-                e.stopPropagation()
-                openModel(model)
-              }}
-            >
-              {t('Try now')}
-            </Button>
-          </div>
-        </div>
-      </Card>
-    </div>
-  )
-
   return (
-    <PublicLayout>
+    <PublicLayout showMainContainer={false}>
+      {showIntro ? (
+        <div className='fixed inset-x-0 top-14 bottom-0 z-40'>
+          <CinematicTransition onComplete={dismissIntro} />
+        </div>
+      ) : null}
       <PageTransition>
-        <div className='mx-auto w-full min-w-0 max-w-7xl px-4 py-6 sm:px-6'>
-          {/* Header */}
-          <div className='mb-6 flex min-w-0 flex-col gap-2'>
-            <div className='flex min-w-0 items-center gap-2'>
-              <Sparkles className='text-primary h-6 w-6 shrink-0' />
-              <h1 className='min-w-0 text-2xl font-bold tracking-tight break-words'>
-                {t('Studio')}
-              </h1>
+        <div className='studio-workspace flex h-svh w-full min-w-0 flex-col pt-14'>
+          <header className='studio-header'>
+            <div className='studio-brand-mark' aria-hidden='true'>
+              <Workflow className='size-4' />
+              <span />
             </div>
-            <p className='text-muted-foreground max-w-3xl text-sm leading-relaxed text-balance break-words'>
-              {t(
-                'Explore leading image and video models. Pick one to start creating.'
-              )}
-            </p>
-          </div>
+            <div className='min-w-0 flex-1'>
+              <div className='flex min-w-0 items-center gap-2.5'>
+                <h1 className='truncate text-[15px] font-semibold tracking-tight'>
+                  {t('Studio')}
+                </h1>
+                <span className='studio-mode-label'>VISUAL WORKFLOW</span>
+              </div>
+              <p className='studio-description truncate'>
+                {t(
+                  'Build a node workflow: connect loaders, model nodes, and preview outputs.'
+                )}
+              </p>
+            </div>
+            <div className='studio-ready-state' role='status'>
+              <Activity className='size-3.5' aria-hidden='true' />
+              <span>{t('Ready')}</span>
+            </div>
+            <Sparkles className='studio-header-sparkle' aria-hidden='true' />
+          </header>
 
-          {/* Category tabs */}
-          <div className='mb-6 flex flex-wrap items-center gap-2'>
-            {TABS.map((tab) => {
-              const isActive = activeTab === tab.key
-              return (
-                <button
-                  key={tab.key}
-                  type='button'
-                  onClick={() => setActiveTab(tab.key)}
-                  className={cn(
-                    'rounded-full border px-4 py-1.5 text-sm font-medium transition-colors',
-                    isActive
-                      ? 'border-primary bg-primary text-primary-foreground shadow-sm'
-                      : 'border-border bg-background text-foreground hover:bg-muted/60'
-                  )}
-                >
-                  {t(tab.labelKey)}
-                </button>
-              )
-            })}
+          <div className='studio-canvas-shell min-h-0 flex-1'>
+            <WorkflowCanvas />
           </div>
-
-          {/* Sections */}
-          {SECTIONS.filter(
-            (section) => activeTab === 'all' || activeTab === section.kind
-          ).map((section) => {
-            const models = getStudioModelsByKind(section.kind)
-            return (
-              <section key={section.kind} className='mb-8 min-w-0'>
-                <div className='mb-4 flex items-center gap-2'>
-                  <h2 className='text-lg font-semibold tracking-tight'>
-                    {t(section.titleKey)}
-                  </h2>
-                  <span className='text-muted-foreground text-sm'>
-                    ({models.length})
-                  </span>
-                </div>
-                <div className='grid grid-cols-1 items-stretch gap-5 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4'>
-                  {models.map(renderCard)}
-                </div>
-              </section>
-            )
-          })}
         </div>
       </PageTransition>
     </PublicLayout>

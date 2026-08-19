@@ -2,7 +2,9 @@
   "Banana 2": "Banana 2",
   "Custom API URL": "自定义 API URL",
   "Enter the full submission endpoint URL, not just the base URL.": "请填写完整的提交接口地址，例如 https://your-host.com/v1/videos/generations",
+  "Google-Gemini": "Google-Gemini",
   "GPT Image 2": "GPT Image 2",
   "Nano Banana 2": "Nano Banana 2",
-  "Nano Banana Pro": "Nano Banana Pro"
+  "Nano Banana Pro": "Nano Banana Pro",
+  "OpenAI-Sora": "OpenAI-Sora"
 }

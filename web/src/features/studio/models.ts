@@ -48,12 +48,42 @@ export type StudioModel = {
   isNew?: boolean
 }
 
-const AI_IMAGE_BASE =
-  'https://trae-api-cn.mchost.guru/api/ide/v1/text_to_image'
+// Local cover images bundled under web/public/landing/experience.
+// Referenced via absolute public paths; the browser encodes spaces/CJK.
+const EXPERIENCE_COVERS: string[] = [
+  '/landing/experience/下载.png',
+  '/landing/experience/下载 (1).png',
+  '/landing/experience/下载 (2).png',
+  '/landing/experience/下载 (3).png',
+  '/landing/experience/下载 (4).png',
+  '/landing/experience/下载 (5).png',
+  '/landing/experience/下载 (6).png',
+  '/landing/experience/下载 (7).png',
+  '/landing/experience/下载 (8).png',
+  '/landing/experience/下载 (9).png',
+  '/landing/experience/下载 (10).png',
+  '/landing/experience/下载 (11).png',
+  '/landing/experience/下载 (12).png',
+  '/landing/experience/下载 (13).png',
+  '/landing/experience/下载 (14).png',
+  '/landing/experience/下载 (15).png',
+  '/landing/experience/下载 (16).png',
+  '/landing/experience/下载 (17).png',
+  '/landing/experience/下载 (18).png',
+  '/landing/experience/下载 (19).png',
+  '/landing/experience/下载 (20).png',
+  '/landing/experience/下载 (21).png',
+  '/landing/experience/下载 (22).png',
+]
 
-/** Build a placeholder cover image URL from a prompt. */
-function coverImage(prompt: string, size = 'landscape_4_3'): string {
-  return `${AI_IMAGE_BASE}?prompt=${encodeURIComponent(prompt)}&image_size=${size}`
+// Assigns local cover images in declaration order, cycling through the
+// available files. The `prompt`/`size` args are ignored and kept only so the
+// per-model call sites below stay unchanged.
+let coverCursor = 0
+function coverImage(_prompt: string, _size = 'landscape_4_3'): string {
+  const src = EXPERIENCE_COVERS[coverCursor % EXPERIENCE_COVERS.length]
+  coverCursor += 1
+  return src
 }
 
 // Model IDs use official/standard upstream names. Adjust the `id` fields here

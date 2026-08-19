@@ -182,15 +182,15 @@ export function PublicHeader(props: PublicHeaderProps) {
         <div
           className={cn(
             'pointer-events-auto mx-auto transition-all duration-700 ease-[cubic-bezier(0.16,1,0.3,1)]',
-            scrolled ? 'max-w-7xl px-3 pt-3' : 'max-w-7xl px-4 pt-0 md:px-6'
+            scrolled ? 'max-w-[1280px] px-4 pt-3' : 'max-w-[1280px] px-4 pt-0 md:px-6'
           )}
         >
           <nav
             className={cn(
               'flex items-center justify-between transition-all duration-700 ease-[cubic-bezier(0.16,1,0.3,1)]',
               scrolled
-                ? 'bg-background/60 ring-border/50 h-12 rounded-2xl pr-1.5 pl-4 shadow-[0_2px_16px_-6px_rgba(0,0,0,0.08),0_0_0_0.5px_rgba(0,0,0,0.02)] ring-[0.5px] backdrop-blur-2xl dark:shadow-[0_2px_16px_-6px_rgba(0,0,0,0.4)]'
-                : 'h-16 px-2',
+                ? 'bg-background/60 ring-border/50 h-11 rounded-2xl pr-1.5 pl-4 shadow-[0_2px_16px_-6px_rgba(0,0,0,0.08),0_0_0_0.5px_rgba(0,0,0,0.02)] ring-[0.5px] backdrop-blur-2xl dark:shadow-[0_2px_16px_-6px_rgba(0,0,0,0.4)]'
+                : 'h-14 px-2',
               isHomeHero &&
                 'rounded-2xl bg-slate-950/18 text-white shadow-[0_18px_60px_-38px_rgba(15,23,42,0.75)] ring-1 ring-white/8 backdrop-blur-sm'
             )}
@@ -225,7 +225,9 @@ export function PublicHeader(props: PublicHeaderProps) {
               <span
                 className={cn(
                   'font-semibold tracking-tight',
-                  isHomeHero ? 'text-[15px]' : 'text-sm'
+                  isHomeHero
+                    ? 'text-base lg:text-lg xl:text-xl'
+                    : 'text-sm lg:text-base xl:text-lg'
                 )}
               >
                 {loading ? <Skeleton className='h-4 w-16' /> : displaySiteName}
@@ -233,14 +235,14 @@ export function PublicHeader(props: PublicHeaderProps) {
             </Link>
 
             {/* Desktop nav */}
-            <div className='hidden items-center gap-0.5 sm:flex'>
+            <div className='hidden items-center gap-0.5 sm:flex lg:gap-1'>
               {links.map((link, i) => {
                 const isActive = pathname === link.href
                 const linkClassName = cn(
-                  'relative rounded-full px-3 py-1.5 text-[13px] font-medium transition-all duration-200 after:absolute after:right-3 after:-bottom-0.5 after:left-3 after:h-px after:origin-center after:scale-x-0 after:bg-current after:opacity-0 after:transition-all after:duration-200 focus-visible:outline-none focus-visible:ring-2',
+                  'relative rounded-full px-3 py-1.5 font-medium transition-all duration-200 after:absolute after:right-3 after:-bottom-0.5 after:left-3 after:h-px after:origin-center after:scale-x-0 after:bg-current after:opacity-0 after:transition-all after:duration-200 focus-visible:outline-none focus-visible:ring-2 lg:px-3.5',
                   isHomeHero
-                    ? 'text-white/78 hover:bg-transparent hover:text-white hover:after:scale-x-100 hover:after:opacity-70 focus-visible:ring-white/40'
-                    : 'text-muted-foreground hover:bg-muted hover:text-foreground focus-visible:ring-ring/50',
+                    ? 'text-sm lg:text-base xl:text-lg text-white/78 hover:bg-transparent hover:text-white hover:after:scale-x-100 hover:after:opacity-70 focus-visible:ring-white/40'
+                    : 'text-xs lg:text-sm text-muted-foreground hover:bg-muted hover:text-foreground focus-visible:ring-ring/50',
                   isActive &&
                     (isHomeHero
                       ? 'bg-transparent text-white after:scale-x-100 after:opacity-80'
@@ -413,7 +415,7 @@ export function PublicHeader(props: PublicHeaderProps) {
             {links.map((link, i) => {
               const isActive = pathname === link.href
               const linkClassName = cn(
-                'flex items-center gap-3 py-3 text-base font-medium tracking-tight transition-all duration-500 ease-[cubic-bezier(0.16,1,0.3,1)]',
+                'flex items-center gap-3 py-3 text-lg font-medium tracking-tight transition-all duration-500 ease-[cubic-bezier(0.16,1,0.3,1)]',
                 mobileOpen
                   ? 'translate-y-0 opacity-100'
                   : 'translate-y-4 opacity-0',

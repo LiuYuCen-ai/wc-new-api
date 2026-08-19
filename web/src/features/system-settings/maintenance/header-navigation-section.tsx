@@ -58,8 +58,8 @@ const headerNavSchema = z.object({
   rankingsRequireAuth: z.boolean(),
   photoEnabled: z.boolean(),
   photoRequireAuth: z.boolean(),
-  videoEnabled: z.boolean(),
-  videoRequireAuth: z.boolean(),
+  studioEnabled: z.boolean(),
+  studioRequireAuth: z.boolean(),
   docs: z.boolean(),
   about: z.boolean(),
 })
@@ -105,14 +105,14 @@ const toFormValues = (config: HeaderNavModulesConfig): HeaderNavFormValues => ({
     config.photo?.requireAuth === undefined
       ? HEADER_NAV_DEFAULT.photo.requireAuth
       : Boolean(config.photo.requireAuth),
-  videoEnabled:
-    config.video?.enabled === undefined
-      ? HEADER_NAV_DEFAULT.video.enabled
-      : Boolean(config.video.enabled),
-  videoRequireAuth:
-    config.video?.requireAuth === undefined
-      ? HEADER_NAV_DEFAULT.video.requireAuth
-      : Boolean(config.video.requireAuth),
+  studioEnabled:
+    config.studio?.enabled === undefined
+      ? HEADER_NAV_DEFAULT.studio.enabled
+      : Boolean(config.studio.enabled),
+  studioRequireAuth:
+    config.studio?.requireAuth === undefined
+      ? HEADER_NAV_DEFAULT.studio.requireAuth
+      : Boolean(config.studio.requireAuth),
   docs:
     config.docs === undefined ? HEADER_NAV_DEFAULT.docs : Boolean(config.docs),
   about:
@@ -160,10 +160,10 @@ export function HeaderNavigationSection({
         enabled: values.photoEnabled,
         requireAuth: values.photoRequireAuth,
       },
-      video: {
-        ...(config.video ?? HEADER_NAV_DEFAULT.video),
-        enabled: values.videoEnabled,
-        requireAuth: values.videoRequireAuth,
+      studio: {
+        ...(config.studio ?? HEADER_NAV_DEFAULT.studio),
+        enabled: values.studioEnabled,
+        requireAuth: values.studioRequireAuth,
       },
     }
 
@@ -190,22 +190,22 @@ export function HeaderNavigationSection({
     {
       key: 'home',
       title: t('Home'),
-      description: t('Landing page with system overview.'),
+      description: t('Top nav "Home" entry, links to the landing page (/).'),
     },
     {
       key: 'console',
       title: t('Console'),
-      description: t('User dashboard and quota controls.'),
+      description: t('Top nav "Console" entry, links to the dashboard (/dashboard).'),
     },
     {
       key: 'docs',
       title: t('Docs'),
-      description: t('Documentation or external knowledge base.'),
+      description: t('Top nav "Docs" entry, links to documentation (/docs or external link).'),
     },
     {
       key: 'about',
       title: t('About'),
-      description: t('Static page describing the platform.'),
+      description: t('Top nav "About" entry, links to the about page (/about).'),
     },
   ]
 
@@ -216,7 +216,7 @@ export function HeaderNavigationSection({
       | 'pricingEnabled'
       | 'rankingsEnabled'
       | 'photoEnabled'
-      | 'videoEnabled'
+      | 'studioEnabled'
     title: string
     description: string
     requireAuthTitle: string
@@ -227,7 +227,7 @@ export function HeaderNavigationSection({
       requireAuthKey: 'pricingRequireAuth',
       requireAuthDependsOn: 'pricingEnabled',
       title: t('Model Square'),
-      description: t('Public model catalog and pricing page.'),
+      description: t('Top nav "Model Square" entry, links to the pricing page (/pricing).'),
       requireAuthTitle: t('Require login to view models'),
       requireAuthDescription: t(
         'Visitors must authenticate before accessing the pricing directory.'
@@ -238,7 +238,7 @@ export function HeaderNavigationSection({
       requireAuthKey: 'rankingsRequireAuth',
       requireAuthDependsOn: 'rankingsEnabled',
       title: t('Rankings'),
-      description: t('Public rankings page based on live usage data.'),
+      description: t('Top nav "Rankings" entry, links to the rankings page (/rankings).'),
       requireAuthTitle: t('Require login to view rankings'),
       requireAuthDescription: t(
         'Visitors must authenticate before accessing the rankings page.'
@@ -249,25 +249,21 @@ export function HeaderNavigationSection({
       requireAuthKey: 'photoRequireAuth',
       requireAuthDependsOn: 'photoEnabled',
       title: t('Experience Hub'),
-      description: t(
-        'Unified image generation playground for Gemini, GPT Image, and more.'
-      ),
+      description: t('Top nav "Experience Hub" entry, links to the image playground (/photo).'),
       requireAuthTitle: t('Require login to view Experience Hub'),
       requireAuthDescription: t(
         'Visitors must authenticate before accessing the Experience Hub.'
       ),
     },
     {
-      enabledKey: 'videoEnabled',
-      requireAuthKey: 'videoRequireAuth',
-      requireAuthDependsOn: 'videoEnabled',
-      title: t('Quick Video'),
-      description: t(
-        'Frontend-only video generation playground with manual model input.'
-      ),
-      requireAuthTitle: t('Require login to view Quick Video'),
+      enabledKey: 'studioEnabled',
+      requireAuthKey: 'studioRequireAuth',
+      requireAuthDependsOn: 'studioEnabled',
+      title: t('Studio'),
+      description: t('Top nav "Studio" entry, links to the studio playground (/studio).'),
+      requireAuthTitle: t('Require login to view Studio'),
       requireAuthDescription: t(
-        'Visitors must authenticate before accessing Quick Video.'
+        'Visitors must authenticate before accessing Studio.'
       ),
     },
   ]

@@ -20,7 +20,7 @@ import { useMemo, useRef, useState, useEffect } from 'react'
 import { useNavigate } from '@tanstack/react-router'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
-import { Download, Check, ChevronLeft, ChevronRight, Film, ImageIcon, ImagePlus, Loader2, Paperclip, Plus, Sparkles, Wand2, X } from 'lucide-react'
+import { Download, Check, ChevronLeft, ChevronRight, Film, ImageIcon, ImagePlus, Loader2, Paperclip, Plus, Wand2, X } from 'lucide-react'
 import { PublicLayout } from '@/components/layout'
 import { PageTransition } from '@/components/page-transition'
 import { Button } from '@/components/ui/button'
@@ -48,7 +48,6 @@ import { useAuthStore } from '@/stores/auth-store'
 import {
   usePhotoFormGenerating,
   usePhotoGenerationStore,
-  usePhotoPendingDisplayCount,
   type PhotoPreviewState,
 } from '@/stores/photo-generation-store'
 import { cn } from '@/lib/utils'
@@ -154,15 +153,38 @@ function appendImageDataEntry(
   return [...current, entry]
 }
 
+const PHOTO_TEMPLATE_IMAGE_GPT = '/landing/experience/girl.png'
+const PHOTO_TEMPLATE_IMAGE_GEMINI = '/landing/experience/cat.png'
+
+const DEFAULT_PHOTO_PROMPT = `生成一幅具有艺术展览感的宽笔湿画厚涂叙事油画。
+
+画面主题为【主题】，主体是【主体】，正在【动作或叙事瞬间】，置于【环境】之中，表达【1—3 个情绪关键词】。画面首先必须好看、协调、有力量和诗性，然后才让观众读出题材与故事；不要做成照片、电影剧照或普通数字插画。
+
+采用【画面比例】构图，建立单一视觉焦点、不对称平衡、清楚的观看路径与合理呼吸空间。主体与环境必须处在同一片空气和光线中，不能像清晰贴图放在背景前。若用于网站首屏、PPT 封面或海报，在【左侧／右侧】保留低对比、有空间层次的自然留白。
+
+整体使用有限、协调、低饱和的配色：【主色】、【辅助色】与少量【点缀色】。使用一束方向明确、边界柔和的叙事主光连接主体、空气和环境；最高亮度只集中在焦点与少量受光部位。
+
+整幅画必须像使用装载大量湿油彩的大号硬毛平刷、大号榛形笔和少量宽画刀直接绘制。对象从大面积明暗色域、冷暖关系、宽笔方向和不完整边缘中逐渐显现，不能先画成清晰平滑的数字图像，再覆盖油画纹理。
+
+主要笔触应是连续、浓稠、湿润、有真实重量的颜料带：起笔载色饱满，中段保留压力变化与刷毛拖痕，两侧形成柔软、圆钝、不规则的油彩脊，收笔逐渐拖薄、断续或融入下层颜色；相邻笔触彼此覆盖、压叠、带色并有限湿画湿融合。
+
+大笔触约占 60%，负责整体构图、主体大结构、环境与光线；中等笔触约占 30%，负责空间和结构提示；小笔触约占 10%，只用于最关键的视觉锚点。不要逐根描绘毛发、羽毛和植物，不要逐一解释建筑与远景细节。
+
+大量使用"失去与找回的边缘"：约 65%—70% 的边缘通过油彩覆盖、主动省略和色域融合而不完整，只有焦点附近保留少量相对明确的结构。柔化必须来自绘画省略，不能来自高斯模糊、镜头失焦或柔焦滤镜。
+
+厚度需要有节奏：焦点、受光面和少量前景使用最厚、最饱满的湿油彩；主体中间调保持中等厚度；背光面、远景、雾气和留白区域更薄、更松、更融合。观看时应先看到完整画面和情绪，靠近后才发现油彩脊、刷毛拖痕与覆盖关系。
+
+严格避免：照片写实、电影剧照、平滑数字绘画、3D 渲染、塑料或蜡像材质、主体贴图感、所有对象同等清晰、全图数字模糊、均匀细碎笔触、硬质浮雕、轮廓描边、玻璃碎片、拼图、马赛克、裂纹、金色缝隙、霓虹、金粉、魔法粒子、发光眼睛、发光轮廓，以及未经要求的文字、字母、数字、Logo、签名或水印。`
+
 const DEFAULT_PARAMS: PhotoParams = {
   model: PHOTO_MODELS[0].id,
-  prompt: '',
+  prompt: DEFAULT_PHOTO_PROMPT,
   n: 1,
-  size: '1024x1024',
-  resolution: '1K',
+  size: '3840x2160',
+  resolution: '4K',
   quality: 'high',
-  aspectRatio: '1:1',
-  imageSize: '1K',
+  aspectRatio: '4:3',
+  imageSize: '4K',
   imageUrlEnabled: false,
   imageDataUrls: [],
 }
@@ -175,6 +197,9 @@ export function Photo() {
   const user = useAuthStore((state) => state.auth.user)
   const [mode, setMode] = useState<'image' | 'video'>('image')
   const [params, setParams] = useState<PhotoParams>(DEFAULT_PARAMS)
+  const [historyView, setHistoryView] = useState<'workbench' | 'history'>(
+    'workbench'
+  )
   const [deleteTarget, setDeleteTarget] = useState<HistoryImageEntry | null>(null)
   const [deleteLoading, setDeleteLoading] = useState(false)
   const history = usePhotoGenerationStore((state) => state.history)
@@ -184,7 +209,6 @@ export function Photo() {
     (state) => state.previewGenerating
   )
   const formLoading = usePhotoFormGenerating()
-  const pendingDisplayCount = usePhotoPendingDisplayCount()
   const loadHistory = usePhotoGenerationStore((state) => state.loadHistory)
   const resetForUser = usePhotoGenerationStore((state) => state.resetForUser)
   const setPreview = usePhotoGenerationStore((state) => state.setPreview)
@@ -297,6 +321,12 @@ export function Photo() {
     void loadHistory(user.id)
   }, [loadHistory, resetForUser, user?.id])
 
+  // Switch to the workbench view when a new generation starts so the user
+  // sees the live result without leaving the history tab behind manually.
+  useEffect(() => {
+    if (formLoading) setHistoryView('workbench')
+  }, [formLoading])
+
   useEffect(() => {
     const historyItemId = preview?.historyItemId
     if (!historyItemId) return
@@ -393,6 +423,17 @@ export function Photo() {
     value: PhotoParams[K]
   ) => {
     setParams((prev) => ({ ...prev, [key]: value }))
+  }
+
+  const selectModel = (modelId: string) => {
+    setParams((prev) => {
+      if (prev.model === modelId) return prev
+      const nextIsGemini = modelId.startsWith('gemini-')
+      if (nextIsGemini) {
+        return { ...prev, model: modelId, imageSize: '4K', aspectRatio: '4:3' }
+      }
+      return { ...prev, model: modelId, resolution: '4K', size: '3840x2160' }
+    })
   }
 
   const updateResolution = (k: '1K' | '2K' | '4K') => {
@@ -562,25 +603,17 @@ export function Photo() {
     })
   }
 
+  let rightPanelHint = t('Your latest generation appears here.')
+  if (historyView !== 'workbench') {
+    rightPanelHint = user
+      ? t('Your recent generations are saved here and can be previewed anytime.')
+      : t('Sign in to save and view your generation history.')
+  }
+
   return (
     <PublicLayout>
       <PageTransition>
-        <div className='mx-auto w-full min-w-0 max-w-7xl px-4 py-6 pb-52 sm:px-6'>
-          {/* Header */}
-          <div className='mb-6 flex min-w-0 flex-col gap-2'>
-            <div className='flex min-w-0 items-center gap-2'>
-              <Sparkles className='text-primary h-6 w-6 shrink-0' />
-              <h1 className='min-w-0 text-2xl font-bold tracking-tight break-words'>
-                {t('Experience Hub')}
-              </h1>
-            </div>
-            <p className='text-muted-foreground max-w-3xl text-sm leading-relaxed text-balance break-words'>
-              {t(
-                'Unified access to Gemini, GPT Image and other image models. Quota is deducted automatically.'
-              )}
-            </p>
-          </div>
-
+        <div className='mx-auto w-full min-w-0 max-w-7xl px-4 py-6 sm:px-6'>
           {/* Mode tabs: image / video */}
           <div className='mb-6 bg-muted/60 inline-flex rounded-lg p-1'>
             <button
@@ -616,8 +649,8 @@ export function Photo() {
           ) : (
           <div className='grid min-w-0 grid-cols-1 gap-6 lg:grid-cols-[minmax(0,380px)_minmax(0,1fr)]'>
             {/* Left: parameters */}
-            <Card className='h-fit min-w-0 lg:sticky lg:top-24'>
-              <CardContent className='space-y-4 p-5'>
+            <Card className='flex min-h-[680px] min-w-0 flex-col overflow-hidden lg:sticky lg:top-24 lg:max-h-[calc(100vh-4rem)]'>
+              <CardContent className='min-h-0 flex-1 space-y-4 overflow-y-auto p-5'>
                 <form
                   ref={paramsFormRef}
                   onSubmit={handleSubmit}
@@ -631,7 +664,7 @@ export function Photo() {
                       <div className='grid grid-cols-2 gap-1'>
                         <button
                           type='button'
-                          onClick={() => update('model', gptModels[0].id)}
+                          onClick={() => selectModel(gptModels[0].id)}
                           className={cn(
                             'rounded-md px-3 py-2 text-sm font-semibold transition-all',
                             !isGemini
@@ -643,7 +676,7 @@ export function Photo() {
                         </button>
                         <button
                           type='button'
-                          onClick={() => update('model', geminiModels[0].id)}
+                          onClick={() => selectModel(geminiModels[0].id)}
                           className={cn(
                             'rounded-md px-3 py-2 text-sm font-semibold transition-all',
                             isGemini
@@ -662,7 +695,7 @@ export function Photo() {
                           <button
                             key={model.id}
                             type='button'
-                            onClick={() => update('model', model.id)}
+                            onClick={() => selectModel(model.id)}
                             className={cn(
                               'flex min-w-0 w-full items-start gap-3 rounded-lg border px-3 py-2.5 text-left transition-colors',
                               isSelected
@@ -697,6 +730,109 @@ export function Photo() {
                       })}
                     </div>
                   </div>
+
+                  {/* Prompt composer (above image size) */}
+                  {mode === 'image' ? (
+                    <div className='space-y-2'>
+                      <input
+                        ref={fileInputRef}
+                        type='file'
+                        accept='image/*'
+                        multiple
+                        className='hidden'
+                        onChange={handleFilesPicked}
+                      />
+                      <Label htmlFor='photo-prompt'>{t('Prompt')}</Label>
+                      <Textarea
+                        id='photo-prompt'
+                        rows={5}
+                        value={params.prompt}
+                        onChange={(e) => update('prompt', e.target.value)}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter' && !e.shiftKey) {
+                            e.preventDefault()
+                            void handleSubmit()
+                          }
+                        }}
+                        placeholder={t('Photo prompt placeholder')}
+                        className={cn(
+                          'field-sizing-fixed max-h-64 min-h-32 flex-1 resize-none',
+                          params.prompt === DEFAULT_PHOTO_PROMPT &&
+                            'text-muted-foreground'
+                        )}
+                      />
+
+                      {supportsImageInput &&
+                      params.imageUrlEnabled &&
+                      params.imageDataUrls.length > 0 ? (
+                        <div className='flex flex-wrap gap-2 px-1'>
+                          {params.imageDataUrls.map((img, index) => (
+                            <div
+                              key={`${img.name}-${index}`}
+                              className='group bg-muted relative h-16 w-16 overflow-hidden rounded-md border'
+                            >
+                              <img
+                                src={img.dataUrl}
+                                alt={img.name}
+                                className='h-full w-full object-cover'
+                              />
+                              <Button
+                                type='button'
+                                variant='secondary'
+                                size='icon'
+                                className='absolute right-0.5 top-0.5 h-5 w-5 opacity-0 transition-opacity group-hover:opacity-100'
+                                onClick={() => removeImageDataUrl(index)}
+                              >
+                                <X className='h-3 w-3' />
+                              </Button>
+                            </div>
+                          ))}
+                        </div>
+                      ) : null}
+
+                      <div className='flex items-center justify-between gap-2'>
+                        <div className='flex items-center gap-1'>
+                          {supportsImageInput ? (
+                            <Button
+                              type='button'
+                              variant='ghost'
+                              size='icon'
+                              className='text-muted-foreground h-8 w-8'
+                              disabled={
+                                params.imageDataUrls.length >= MAX_UPLOAD_IMAGES
+                              }
+                              aria-label={t('Image Input')}
+                              onClick={() => {
+                                if (!params.imageUrlEnabled) {
+                                  update('imageUrlEnabled', true)
+                                }
+                                fileInputRef.current?.click()
+                              }}
+                            >
+                              <Paperclip className='h-4 w-4' />
+                            </Button>
+                          ) : null}
+                        </div>
+                        <Button
+                          type='submit'
+                          disabled={formLoading}
+                          className='h-9 shrink-0'
+                        >
+                          {formLoading ? (
+                            <>
+                              <Loader2 className='mr-2 h-4 w-4 animate-spin' />
+                              {t('Generating...')}
+                            </>
+                          ) : (
+                            <>
+                              <Wand2 className='mr-2 h-4 w-4' />
+                              {t('Generate')}
+                            </>
+                          )}
+                        </Button>
+                      </div>
+                    </div>
+                  ) : null}
 
                   {selectedModel.supportsSize ? (
                     <>
@@ -952,168 +1088,118 @@ export function Photo() {
               </CardContent>
             </Card>
 
-            {/* Right: generation history */}
-            <Card className='flex min-h-[560px] min-w-0 flex-col overflow-hidden lg:max-h-[calc(100vh-7rem)]'>
-              <div className='border-b px-4 py-3 sm:px-5'>
-                <h2 className='text-base font-semibold tracking-tight break-words'>
-                  {t('Generation History')}
-                </h2>
-                <p className='text-muted-foreground mt-1 text-xs leading-relaxed break-words sm:text-sm'>
-                  {user
-                    ? t(
-                        'Your recent generations are saved here and can be previewed anytime.'
-                      )
-                    : t('Sign in to save and view your generation history.')}
-                </p>
+            {/* Right: generation workbench / history */}
+            <Card className='flex min-h-[680px] min-w-0 flex-col overflow-hidden lg:max-h-[calc(100vh-4rem)]'>
+              <div className='flex flex-wrap items-center justify-between gap-3 border-b px-4 py-3 sm:px-5'>
+                <div className='min-w-0'>
+                  <h2 className='text-base font-semibold tracking-tight break-words'>
+                    {historyView === 'workbench'
+                      ? t('Workbench')
+                      : t('Generation History')}
+                  </h2>
+                  <p className='text-muted-foreground mt-1 text-xs leading-relaxed break-words sm:text-sm'>
+                    {rightPanelHint}
+                  </p>
+                </div>
+                <div className='bg-muted/60 inline-flex shrink-0 rounded-lg p-0.5'>
+                  <button
+                    type='button'
+                    onClick={() => setHistoryView('workbench')}
+                    className={cn(
+                      'rounded-md px-3 py-1.5 text-xs font-medium transition-colors',
+                      historyView === 'workbench'
+                        ? 'bg-background text-foreground shadow-sm'
+                        : 'text-muted-foreground hover:text-foreground'
+                    )}
+                  >
+                    {t('Workbench')}
+                  </button>
+                  <button
+                    type='button'
+                    onClick={() => setHistoryView('history')}
+                    className={cn(
+                      'rounded-md px-3 py-1.5 text-xs font-medium transition-colors',
+                      historyView === 'history'
+                        ? 'bg-background text-foreground shadow-sm'
+                        : 'text-muted-foreground hover:text-foreground'
+                    )}
+                  >
+                    {t('Generation History')}
+                  </button>
+                </div>
               </div>
 
               <CardContent className='min-h-0 flex-1 overflow-y-auto p-4 sm:p-5'>
-                {!user ? (
-                  <EmptyState
-                    isGemini={isGemini}
-                    message={t('Sign in to save and view your generation history.')}
-                  />
-                ) : (
-                  <div className='space-y-3'>
-                    {historyLoading ? (
-                      <PhotoPendingGrid count={3} />
-                    ) : null}
-                    {formLoading ? (
-                      <PhotoPendingGrid count={pendingDisplayCount} />
-                    ) : null}
-                    {!historyLoading &&
-                    history.filter(
-                      (item) =>
-                        item.status !== 'pending' || item.images.length > 0
-                    ).length === 0 &&
-                    !formLoading ? (
-                      <EmptyState isGemini={isGemini} />
-                    ) : history.length > 0 ? (
-                      <HistoryFeed
-                        history={history.filter(
-                          (item) =>
-                            item.status !== 'pending' || item.images.length > 0
+                {(() => {
+                  if (!user) {
+                    return (
+                      <EmptyState
+                        isGemini={isGemini}
+                        message={t(
+                          'Sign in to save and view your generation history.'
                         )}
-                        onPreview={openPreview}
-                        onRequestDelete={setDeleteTarget}
                       />
-                    ) : null}
-                  </div>
-                )}
+                    )
+                  }
+                  const visibleHistory = history.filter(
+                    (item) =>
+                      item.status !== 'pending' || item.images.length > 0
+                  )
+                  if (historyView === 'workbench') {
+                    if (formLoading) {
+                      return <PhotoPendingGrid count={1} featured />
+                    }
+                    return (
+                      <div className='space-y-3'>
+                        {visibleHistory.length === 0 ? (
+                          <div className='space-y-3'>
+                            <div className='overflow-hidden rounded-lg border'>
+                              <img
+                                src={
+                                  isGemini
+                                    ? PHOTO_TEMPLATE_IMAGE_GEMINI
+                                    : PHOTO_TEMPLATE_IMAGE_GPT
+                                }
+                                alt={t('Template')}
+                                className='h-auto w-full object-cover'
+                              />
+                            </div>
+                            <p className='text-muted-foreground text-center text-xs leading-relaxed break-words sm:text-sm'>
+                              {t('Pick a template or generate your own image.')}
+                            </p>
+                          </div>
+                        ) : (
+                          <HistoryFeed
+                            history={visibleHistory.slice(0, 1)}
+                            onPreview={openPreview}
+                            onRequestDelete={setDeleteTarget}
+                            variant='featured'
+                          />
+                        )}
+                      </div>
+                    )
+                  }
+                  return (
+                    <div className='space-y-3'>
+                      {historyLoading ? <PhotoPendingGrid count={3} /> : null}
+                      {!historyLoading && visibleHistory.length === 0 ? (
+                        <EmptyState isGemini={isGemini} />
+                      ) : null}
+                      {visibleHistory.length > 0 ? (
+                        <HistoryFeed
+                          history={visibleHistory}
+                          onPreview={openPreview}
+                          onRequestDelete={setDeleteTarget}
+                        />
+                      ) : null}
+                    </div>
+                  )
+                })()}
               </CardContent>
             </Card>
           </div>
           )}
         </div>
-
-        {/* Bottom prompt bar (fixed, chat-style) */}
-        {mode === 'image' ? (
-        <div className='pointer-events-none fixed inset-x-0 bottom-0 z-40'>
-          <div className='mx-auto w-full max-w-7xl px-4 pb-4 sm:px-6'>
-            <form
-              onSubmit={handleSubmit}
-              className='bg-background/95 pointer-events-auto flex flex-col gap-2 rounded-2xl border p-3 shadow-lg backdrop-blur supports-[backdrop-filter]:bg-background/80'
-              aria-label='photo-prompt-bar'
-            >
-              <input
-                ref={fileInputRef}
-                type='file'
-                accept='image/*'
-                multiple
-                className='hidden'
-                onChange={handleFilesPicked}
-              />
-              <Label htmlFor='photo-prompt' className='sr-only'>
-                {t('Prompt')}
-              </Label>
-              <Textarea
-                id='photo-prompt'
-                rows={3}
-                value={params.prompt}
-                onChange={(e) => update('prompt', e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter' && !e.shiftKey) {
-                    e.preventDefault()
-                    void handleSubmit()
-                  }
-                }}
-                placeholder={t('Photo prompt placeholder')}
-                className='max-h-48 min-h-20 flex-1 resize-none border-0 bg-transparent px-1 shadow-none focus-visible:ring-0'
-              />
-
-              {supportsImageInput &&
-              params.imageUrlEnabled &&
-              params.imageDataUrls.length > 0 ? (
-                <div className='flex flex-wrap gap-2 px-1'>
-                  {params.imageDataUrls.map((img, index) => (
-                    <div
-                      key={`${img.name}-${index}`}
-                      className='group relative h-16 w-16 overflow-hidden rounded-md border bg-muted'
-                    >
-                      <img
-                        src={img.dataUrl}
-                        alt={img.name}
-                        className='h-full w-full object-cover'
-                      />
-                      <Button
-                        type='button'
-                        variant='secondary'
-                        size='icon'
-                        className='absolute right-0.5 top-0.5 h-5 w-5 opacity-0 transition-opacity group-hover:opacity-100'
-                        onClick={() => removeImageDataUrl(index)}
-                      >
-                        <X className='h-3 w-3' />
-                      </Button>
-                    </div>
-                  ))}
-                </div>
-              ) : null}
-
-              <div className='flex items-center justify-between gap-2'>
-                <div className='flex items-center gap-1'>
-                  {supportsImageInput ? (
-                    <Button
-                      type='button'
-                      variant='ghost'
-                      size='icon'
-                      className='text-muted-foreground h-8 w-8'
-                      disabled={
-                        params.imageDataUrls.length >= MAX_UPLOAD_IMAGES
-                      }
-                      aria-label={t('Image Input')}
-                      onClick={() => {
-                        if (!params.imageUrlEnabled) {
-                          update('imageUrlEnabled', true)
-                        }
-                        fileInputRef.current?.click()
-                      }}
-                    >
-                      <Paperclip className='h-4 w-4' />
-                    </Button>
-                  ) : null}
-                </div>
-                <Button
-                  type='submit'
-                  disabled={formLoading}
-                  className='h-9 shrink-0'
-                >
-                  {formLoading ? (
-                    <>
-                      <Loader2 className='mr-2 h-4 w-4 animate-spin' />
-                      {t('Generating...')}
-                    </>
-                  ) : (
-                    <>
-                      <Wand2 className='mr-2 h-4 w-4' />
-                      {t('Generate')}
-                    </>
-                  )}
-                </Button>
-              </div>
-            </form>
-          </div>
-        </div>
-        ) : null}
 
         <AlertDialog
           open={Boolean(deleteTarget)}
@@ -1214,8 +1300,27 @@ function EmptyState({
   )
 }
 
-function PhotoPendingGrid({ count }: { count: number }) {
+function PhotoPendingGrid({
+  count,
+  featured = false,
+}: {
+  count: number
+  featured?: boolean
+}) {
   const { t } = useTranslation()
+  if (featured) {
+    return (
+      <div className='bg-muted ring-foreground/10 relative flex min-h-[60vh] items-center justify-center overflow-hidden rounded-lg ring-1'>
+        <Skeleton className='h-full w-full rounded-none' />
+        <div className='bg-background/35 absolute inset-0 flex flex-col items-center justify-center gap-2'>
+          <Loader2 className='text-primary h-8 w-8 animate-spin' />
+          <span className='text-muted-foreground text-sm'>
+            {t('Generating...')}
+          </span>
+        </div>
+      </div>
+    )
+  }
   return (
     <div className='grid grid-cols-3 gap-2 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-4 xl:grid-cols-6'>
       {Array.from({ length: Math.max(1, Number(count) || 1) }).map((_, i) => (
@@ -1266,13 +1371,16 @@ function HistoryFeed({
   history,
   onPreview,
   onRequestDelete,
+  variant = 'grid',
 }: {
   history: PhotoHistoryItem[]
   onPreview: (state: PhotoPreviewState) => void
   onRequestDelete: (entry: HistoryImageEntry) => void
+  variant?: 'grid' | 'featured'
 }) {
   const { t } = useTranslation()
   const entries = useMemo(() => flattenHistoryImages(history), [history])
+  const isFeatured = variant === 'featured'
 
   const handleOpenPreview = async (entry: HistoryImageEntry, selectedSrc: string) => {
     const openWithSources = (sources: string[]) => {
@@ -1302,13 +1410,23 @@ function HistoryFeed({
   }
 
   return (
-    <div className='grid grid-cols-3 gap-2 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-4 xl:grid-cols-6'>
+    <div
+      className={
+        isFeatured
+          ? 'grid grid-cols-1 gap-3'
+          : 'grid grid-cols-3 gap-2 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-4 xl:grid-cols-6'
+      }
+    >
       {entries.map((entry) => (
         <PhotoHistoryThumbnail
           key={entry.id}
           image={entry.image}
           alt={entry.prompt}
           ariaLabel={t('View image')}
+          aspectClassName={
+            isFeatured ? 'min-h-[60vh] flex items-center justify-center' : undefined
+          }
+          imageClassName={isFeatured ? 'object-contain' : undefined}
           onClick={(src) => {
             void handleOpenPreview(entry, src)
           }}
