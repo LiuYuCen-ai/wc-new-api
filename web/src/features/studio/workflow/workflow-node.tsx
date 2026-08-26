@@ -279,11 +279,17 @@ function StyledSelect({
     >
       <SelectTrigger
         size='sm'
-        className='workflow-field workflow-select nodrag h-8 w-full text-xs'
+        className='workflow-field workflow-select nodrag h-8 w-full min-w-0 truncate text-xs'
       >
         <SelectValue placeholder={placeholder} />
       </SelectTrigger>
-      <SelectContent className='max-h-64 text-xs'>
+      <SelectContent
+        className='z-[9999] max-h-72 min-w-[160px] text-xs'
+        side='bottom'
+        sideOffset={4}
+        align='start'
+        alignItemWithTrigger={false}
+      >
         {options.map((opt) => (
           <SelectItem key={opt.value} value={opt.value} className='text-xs'>
             {opt.label}

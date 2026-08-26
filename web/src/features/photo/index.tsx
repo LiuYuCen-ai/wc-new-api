@@ -614,38 +614,70 @@ export function Photo() {
     <PublicLayout>
       <PageTransition>
         <div className='mx-auto w-full min-w-0 max-w-7xl px-4 py-6 sm:px-6'>
-          {/* Mode tabs: image / video */}
-          <div className='mb-6 bg-muted/60 inline-flex rounded-lg p-1'>
-            <button
-              type='button'
-              onClick={() => setMode('image')}
-              className={cn(
-                'flex items-center gap-1.5 rounded-md px-4 py-2 text-sm font-semibold transition-all',
-                mode === 'image'
-                  ? 'bg-background text-foreground shadow-sm ring-1 ring-border/60'
-                  : 'text-muted-foreground hover:text-foreground'
-              )}
-            >
-              <ImageIcon className='h-4 w-4' />
-              {t('Image generation')}
-            </button>
-            <button
-              type='button'
-              onClick={() => setMode('video')}
-              className={cn(
-                'flex items-center gap-1.5 rounded-md px-4 py-2 text-sm font-semibold transition-all',
-                mode === 'video'
-                  ? 'bg-background text-foreground shadow-sm ring-1 ring-border/60'
-                  : 'text-muted-foreground hover:text-foreground'
-              )}
-            >
-              <Film className='h-4 w-4' />
-              {t('Video generation')}
-            </button>
+          {/* Mode tabs: image / video / history */}
+          <div className='mb-6 flex flex-wrap items-center gap-2'>
+            <div className='bg-muted/60 inline-flex rounded-lg p-1'>
+              <button
+                type='button'
+                onClick={() => setMode('image')}
+                className={cn(
+                  'flex items-center gap-1.5 rounded-md px-4 py-2 text-sm font-semibold transition-all',
+                  mode === 'image'
+                    ? 'bg-background text-foreground shadow-sm ring-1 ring-border/60'
+                    : 'text-muted-foreground hover:text-foreground'
+                )}
+              >
+                <ImageIcon className='h-4 w-4' />
+                {t('Image generation')}
+              </button>
+              <button
+                type='button'
+                onClick={() => setMode('video')}
+                className={cn(
+                  'flex items-center gap-1.5 rounded-md px-4 py-2 text-sm font-semibold transition-all',
+                  mode === 'video'
+                    ? 'bg-background text-foreground shadow-sm ring-1 ring-border/60'
+                    : 'text-muted-foreground hover:text-foreground'
+                )}
+              >
+                <Film className='h-4 w-4' />
+                {t('Video generation')}
+              </button>
+            </div>
+            <div className='bg-muted/60 inline-flex rounded-lg p-1'>
+                <button
+                  type='button'
+                  onClick={() => setHistoryView('workbench')}
+                  className={cn(
+                    'flex items-center gap-1.5 rounded-md px-4 py-2 text-sm font-semibold transition-all',
+                    historyView === 'workbench'
+                      ? 'bg-background text-foreground shadow-sm ring-1 ring-border/60'
+                      : 'text-muted-foreground hover:text-foreground'
+                  )}
+                >
+                  {t('Workbench')}
+                </button>
+                <button
+                  type='button'
+                  onClick={() => setHistoryView('history')}
+                  className={cn(
+                    'flex items-center gap-1.5 rounded-md px-4 py-2 text-sm font-semibold transition-all',
+                    historyView === 'history'
+                      ? 'bg-background text-foreground shadow-sm ring-1 ring-border/60'
+                      : 'text-muted-foreground hover:text-foreground'
+                  )}
+                >
+                  {t('Generation History')}
+                </button>
+              </div>
           </div>
 
-          {mode === 'video' ? (
+          {mode === 'video' && historyView === 'workbench' ? (
             <VideoPanel />
+          ) : mode === 'video' && historyView === 'history' ? (
+            <div className='min-w-0'>
+              <VideoPanel view='history' />
+            </div>
           ) : (
           <div className='grid min-w-0 grid-cols-1 gap-6 lg:grid-cols-[minmax(0,380px)_minmax(0,1fr)]'>
             {/* Left: parameters */}
@@ -1090,42 +1122,11 @@ export function Photo() {
 
             {/* Right: generation workbench / history */}
             <Card className='flex min-h-[680px] min-w-0 flex-col overflow-hidden lg:max-h-[calc(100vh-4rem)]'>
-              <div className='flex flex-wrap items-center justify-between gap-3 border-b px-4 py-3 sm:px-5'>
+              <div className='flex flex-wrap items-center gap-3 border-b px-4 py-3 sm:px-5'>
                 <div className='min-w-0'>
-                  <h2 className='text-base font-semibold tracking-tight break-words'>
-                    {historyView === 'workbench'
-                      ? t('Workbench')
-                      : t('Generation History')}
-                  </h2>
-                  <p className='text-muted-foreground mt-1 text-xs leading-relaxed break-words sm:text-sm'>
+                  <p className='text-muted-foreground text-xs leading-relaxed break-words sm:text-sm'>
                     {rightPanelHint}
                   </p>
-                </div>
-                <div className='bg-muted/60 inline-flex shrink-0 rounded-lg p-0.5'>
-                  <button
-                    type='button'
-                    onClick={() => setHistoryView('workbench')}
-                    className={cn(
-                      'rounded-md px-3 py-1.5 text-xs font-medium transition-colors',
-                      historyView === 'workbench'
-                        ? 'bg-background text-foreground shadow-sm'
-                        : 'text-muted-foreground hover:text-foreground'
-                    )}
-                  >
-                    {t('Workbench')}
-                  </button>
-                  <button
-                    type='button'
-                    onClick={() => setHistoryView('history')}
-                    className={cn(
-                      'rounded-md px-3 py-1.5 text-xs font-medium transition-colors',
-                      historyView === 'history'
-                        ? 'bg-background text-foreground shadow-sm'
-                        : 'text-muted-foreground hover:text-foreground'
-                    )}
-                  >
-                    {t('Generation History')}
-                  </button>
                 </div>
               </div>
 

@@ -289,34 +289,44 @@
 .stage-actions button:hover { color: #273252; border-color: rgba(113, 132, 210, .56); background: rgba(255,255,255,.68); }
 .stage-actions button span { font-size: 9px; letter-spacing: .16em; }
 
-@keyframes stage-breath { 0% { filter: brightness(.88); } 10% { filter: brightness(1); } 75% { filter: brightness(1); } 92% { filter: brightness(1.35); } 100% { filter: brightness(1); } }
-@keyframes stage-palette { 0%,48% { background-color: #f1f4fc; } 58% { background-color: #c4cce5; } 70% { background-color: #aeb9d9; } 82% { background-color: #8d9ec7; } 91% { background-color: #b5bfdc; } 100% { background-color: #f0f3fc; } }
-@keyframes base-glow { 0% { opacity: 0; transform: scale(1.08); } 7% { opacity: 1; } 47% { opacity: 1; transform: scale(1); } 58% { opacity: .18; } 70%,100% { opacity: 0; transform: scale(.92); } }
-@keyframes grid-appear { 0%,9% { opacity: 0; transform: perspective(420px) rotateX(67deg) scale(1.7) translateY(8%); } 21% { opacity: .5; } 48% { opacity: .12; } 60%,100% { opacity: 0; transform: perspective(420px) rotateX(67deg) scale(1) translateY(-4%); } }
-@keyframes ice-opener-life { 0% { opacity: 0; } 5%,43% { opacity: 1; } 51%,100% { opacity: 0; transform: scale(1.04); filter: blur(5px); } }
-@keyframes figure-drift { 0% { opacity: 0; transform: translate(-50%, -44%) scale(1.12); } 13% { opacity: 1; } 45% { opacity: .8; transform: translate(-50%, -53%) scale(.96); } 53%,100% { opacity: 0; transform: translate(-50%, -58%) scale(.9); } }
-@keyframes prism-enter { 0% { opacity: 0; transform: translateX(-65%) skewX(-9deg); } 13% { opacity: 1; } 38% { opacity: .9; transform: translateX(0) skewX(-9deg); } 49% { opacity: 0; transform: translateX(22%) skewX(-9deg); } 100% { opacity: 0; } }
-@keyframes focus-orbit-life { 0%,8% { opacity: 0; transform: translate(-50%, -50%) scale(.62) rotate(-14deg); } 20% { opacity: 1; } 43% { opacity: .65; transform: translate(-50%, -50%) scale(1) rotate(0); } 51%,100% { opacity: 0; transform: translate(-50%, -50%) scale(1.25) rotate(12deg); } }
+/* --- keyframes remapped for 5500ms front-half-only animation --- */
+/* stage */
+@keyframes stage-breath { 0% { filter: brightness(.88); } 10% { filter: brightness(1); } 80% { filter: brightness(1); } 95% { filter: brightness(1.18); } 100% { filter: brightness(1); } }
+@keyframes stage-palette { 0%,100% { background-color: #f1f4fc; } }
+/* base glow: fade in then out */
+@keyframes base-glow { 0% { opacity: 0; transform: scale(1.08); } 7% { opacity: 1; } 70% { opacity: 1; transform: scale(1); } 90%,100% { opacity: 0; transform: scale(.96); } }
+/* grid: show in front half only */
+@keyframes grid-appear { 0%,9% { opacity: 0; transform: perspective(420px) rotateX(67deg) scale(1.7) translateY(8%); } 22% { opacity: .5; } 72% { opacity: .12; } 88%,100% { opacity: 0; transform: perspective(420px) rotateX(67deg) scale(1) translateY(-4%); } }
+/* ice opener: visible for first ~65% then fades */
+@keyframes ice-opener-life { 0% { opacity: 0; } 5%,60% { opacity: 1; } 78%,100% { opacity: 0; transform: scale(1.04); filter: blur(5px); } }
+@keyframes figure-drift { 0% { opacity: 0; transform: translate(-50%, -44%) scale(1.12); } 13% { opacity: 1; } 62% { opacity: .8; transform: translate(-50%, -53%) scale(.96); } 80%,100% { opacity: 0; transform: translate(-50%, -58%) scale(.9); } }
+@keyframes prism-enter { 0% { opacity: 0; transform: translateX(-65%) skewX(-9deg); } 13% { opacity: 1; } 55% { opacity: .9; transform: translateX(0) skewX(-9deg); } 75% { opacity: 0; transform: translateX(22%) skewX(-9deg); } 100% { opacity: 0; } }
+@keyframes focus-orbit-life { 0%,8% { opacity: 0; transform: translate(-50%, -50%) scale(.62) rotate(-14deg); } 20% { opacity: 1; } 62% { opacity: .65; transform: translate(-50%, -50%) scale(1) rotate(0); } 80%,100% { opacity: 0; transform: translate(-50%, -50%) scale(1.25) rotate(12deg); } }
 @keyframes orbit-dot { to { transform: rotate(360deg); } }
-@keyframes light-scan { 0%,8% { opacity: 0; left: -18%; } 14% { opacity: 1; } 39% { opacity: .8; left: 106%; } 40%,100% { opacity: 0; left: 106%; } }
-@keyframes brand-reveal-life { 0%,52% { opacity: 0; } 58%,88% { opacity: 1; } 96%,100% { opacity: 0; } }
-@keyframes brand-halo-life { 0%,52% { opacity: 0; transform: translate(-50%, -50%) scale(.45); } 64% { opacity: 1; transform: translate(-50%, -50%) scale(1); } 84% { opacity: .72; transform: translate(-50%, -50%) scale(1.08); } 95%,100% { opacity: 0; transform: translate(-50%, -50%) scale(.28); } }
-@keyframes brand-mark-life { 0%,55% { opacity: 0; clip-path: inset(48% 0 48% 0); transform: translate(-50%, -50%) scale(.74); filter: blur(12px) brightness(1.5); } 64% { opacity: .92; clip-path: inset(0 0 0 0); transform: translate(-50%, -50%) scale(1.06); filter: blur(0) brightness(1.08) drop-shadow(0 24px 42px rgba(39, 42, 105, .2)); } 72%,82% { opacity: 1; transform: translate(-50%, -50%) scale(1); filter: blur(0) brightness(1); } 90% { opacity: .72; transform: translate(-50%, -50%) scale(.84); filter: blur(1px) brightness(1.18); } 96%,100% { opacity: 0; clip-path: inset(42% 42% 42% 42%); transform: translate(-50%, -50%) scale(.08); filter: blur(8px) brightness(1.8); } }
-@keyframes brand-echo-a { 0%,52% { opacity: 0; transform: translate(-66%, -50%) scale(1.18); } 58% { opacity: .26; } 70%,100% { opacity: 0; transform: translate(-50%, -50%) scale(1); } }
-@keyframes brand-echo-b { 0%,52% { opacity: 0; transform: translate(-34%, -50%) scale(.88); } 60% { opacity: .2; } 72%,100% { opacity: 0; transform: translate(-50%, -50%) scale(1); } }
-@keyframes brand-scan-life { 0%,59% { opacity: 0; transform: translate(-50%, -64%); } 64% { opacity: .95; } 77% { opacity: .58; transform: translate(-50%, -36%); } 83%,100% { opacity: 0; transform: translate(-50%, -28%); } }
-@keyframes portal-enter { 0%,34% { opacity: 0; transform: translate(-50%, -50%) scale(.5) rotate(-12deg); filter: blur(7px); } 46% { opacity: .65; filter: blur(0); } 62% { opacity: .62; transform: translate(-50%, -50%) scale(1) rotate(0); } 78% { opacity: 1; transform: translate(-50%, -50%) scale(.62) rotate(8deg); } 94%,100% { opacity: 0; transform: translate(-50%, -50%) scale(.02) rotate(80deg); } }
+@keyframes light-scan { 0%,8% { opacity: 0; left: -18%; } 14% { opacity: 1; } 55% { opacity: .8; left: 106%; } 56%,100% { opacity: 0; left: 106%; } }
+/* brand logo: appears in the middle replacing the title text (15%–85%) */
+@keyframes brand-reveal-life { 0%,12% { opacity: 0; } 20%,78% { opacity: 1; } 92%,100% { opacity: 0; } }
+@keyframes brand-halo-life { 0%,12% { opacity: 0; transform: translate(-50%, -50%) scale(.45); } 24% { opacity: 1; transform: translate(-50%, -50%) scale(1); } 72% { opacity: .72; transform: translate(-50%, -50%) scale(1.08); } 90%,100% { opacity: 0; transform: translate(-50%, -50%) scale(.28); } }
+@keyframes brand-mark-life { 0%,14% { opacity: 0; clip-path: inset(48% 0 48% 0); transform: translate(-50%, -50%) scale(.74); filter: blur(12px) brightness(1.5); } 24% { opacity: .92; clip-path: inset(0 0 0 0); transform: translate(-50%, -50%) scale(1.06); filter: blur(0) brightness(1.08) drop-shadow(0 24px 42px rgba(39, 42, 105, .2)); } 36%,68% { opacity: 1; transform: translate(-50%, -50%) scale(1); filter: blur(0) brightness(1); } 82% { opacity: .72; transform: translate(-50%, -50%) scale(.88); filter: blur(1px) brightness(1.1); } 94%,100% { opacity: 0; clip-path: inset(42% 42% 42% 42%); transform: translate(-50%, -50%) scale(.08); filter: blur(8px) brightness(1.8); } }
+@keyframes brand-echo-a { 0%,12% { opacity: 0; transform: translate(-66%, -50%) scale(1.18); } 22% { opacity: .26; } 42%,100% { opacity: 0; transform: translate(-50%, -50%) scale(1); } }
+@keyframes brand-echo-b { 0%,12% { opacity: 0; transform: translate(-34%, -50%) scale(.88); } 24% { opacity: .2; } 44%,100% { opacity: 0; transform: translate(-50%, -50%) scale(1); } }
+@keyframes brand-scan-life { 0%,18% { opacity: 0; transform: translate(-50%, -64%); } 26% { opacity: .95; } 52% { opacity: .58; transform: translate(-50%, -36%); } 66%,100% { opacity: 0; transform: translate(-50%, -28%); } }
+/* portal: hidden (not used in front half) */
+@keyframes portal-enter { 0%,100% { opacity: 0; transform: translate(-50%, -50%) scale(.5) rotate(-12deg); } }
 @keyframes ring-spin { to { transform: translate(-50%, -50%) rotate(360deg); } }
 @keyframes ring-spin-reverse { to { transform: translate(-50%, -50%) rotate(-320deg); } }
-@keyframes copy-life { 0%,7% { opacity: 0; } 14%,38% { opacity: 1; } 49%,100% { opacity: 0; transform: translateY(-18px) scale(.98); filter: blur(3px); } }
+/* opening-copy (万象生成 text): hidden — replaced by logo */
+@keyframes copy-life { 0%,100% { opacity: 0; } }
 @keyframes glyph-in { to { opacity: 1; clip-path: inset(0 0 0 0); transform: translateY(0); } }
 @keyframes line-grow { from { transform: scaleX(0); } to { transform: scaleX(1); } }
-@keyframes secondary-life { 0%,48% { opacity: 0; transform: translateY(20px); filter: blur(12px); } 57%,69% { opacity: 1; transform: translateY(0); filter: blur(0); } 78%,100% { opacity: 0; transform: translateY(-15px) scale(1.08); filter: blur(10px); } }
-@keyframes chrome-life { 0%,7% { opacity: 0; } 16%,76% { opacity: 1; } 90%,100% { opacity: 0; } }
+/* secondary-copy: hidden in front half */
+@keyframes secondary-life { 0%,100% { opacity: 0; } }
+@keyframes chrome-life { 0%,7% { opacity: 0; } 16%,82% { opacity: 1; } 94%,100% { opacity: 0; } }
 @keyframes time-progress { from { transform: scaleX(0); } to { transform: scaleX(1); } }
-@keyframes controls-life { 0%,6% { opacity: 0; } 12%,78% { opacity: 1; } 91%,100% { opacity: 0; } }
-@keyframes final-flare { 0%,78% { opacity: 0; transform: translate(-50%, -50%) scale(0); } 83% { opacity: 1; transform: translate(-50%, -50%) scale(1); } 94%,100% { opacity: 1; transform: translate(-50%, -50%) scale(60); } }
-@keyframes grain-life { 0%,46% { opacity: 0; } 55%,82% { opacity: .08; } 92%,100% { opacity: 0; } }
+@keyframes controls-life { 0%,6% { opacity: 0; } 12%,82% { opacity: 1; } 94%,100% { opacity: 0; } }
+/* final-flare: subtle fade at very end */
+@keyframes final-flare { 0%,82% { opacity: 0; transform: translate(-50%, -50%) scale(0); } 88% { opacity: .6; transform: translate(-50%, -50%) scale(1); } 96%,100% { opacity: .8; transform: translate(-50%, -50%) scale(12); } }
+@keyframes grain-life { 0%,100% { opacity: 0; } }
 @keyframes grain { 0% { transform: translate(0,0); } 25% { transform: translate(3%, -2%); } 50% { transform: translate(-2%, 3%); } 75% { transform: translate(2%, 2%); } 100% { transform: translate(-3%, -3%); } }
 
 @media (max-width: 700px) {

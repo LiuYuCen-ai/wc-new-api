@@ -41,17 +41,24 @@ import {
   type Edge,
   type Node,
   type NodeTypes,
+  type OnConnectEnd,
 } from '@xyflow/react'
 import {
+  AlertCircle,
+  CheckCircle2,
   ChevronRight,
   CircleDot,
+  Image as ImageIcon,
+  Info,
   Loader2,
+  PanelRightOpen,
   Play,
   Plus,
   Trash2,
   Workflow,
+  X,
 } from 'lucide-react'
-import { useCallback, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
 import '@xyflow/react/dist/style.css'
@@ -87,6 +94,15 @@ const nodeTypes: NodeTypes = { workflow: WorkflowNode }
 let nodeSeq = 0
 const nextNodeId = () =>
   `n${Date.now().toString(36)}${(nodeSeq++).toString(36)}`
+
+type LogEntry =
+  | { type: 'info' | 'success' | 'error'; time: number; message: string }
+  | { type: 'image'; time: number; message: string; imageUrl: string }
+
+const fmtTime = (ts: number) => {
+  const d = new Date(ts)
+  return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}:${String(d.getSeconds()).padStart(2, '0')}`
+}
 
 /** Seed graph: two parallel Text -> Generate Image -> Preview Image chains. */
 function createInitialGraph(onChange: WorkflowNodeData['onChange']): {
@@ -159,6 +175,21 @@ function CanvasInner() {
   const [runStatus, setRunStatus] = useState<
     Record<string, 'running' | 'done' | 'error'>
   >({})
+  const [logOpen, setLogOpen] = useState(false)
+  const [logs, setLogs] = useState<LogEntry[]>([])
+  const logEndRef = useRef<HTMLDivElement>(null)
+
+  // Quick-add menu (drop-connection on empty canvas)
+  const [quickAdd, setQuickAdd] = useState<{
+    x: number
+    y: number
+    flowPos: { x: number; y: number }
+  } | null>(null)
+  const pendingConnectionRef = useRef<{ source: string; sourceHandle: string | null } | null>(null)
+
+  const addLog = useCallback((entry: LogEntry) => {
+    setLogs((prev) => [...prev, entry])
+  }, [])
 
   // Ref indirection so the node onChange closure always sees current setNodes.
   const setNodesRef = useRef<
@@ -197,19 +228,41 @@ function CanvasInner() {
     [setEdges]
   )
 
+  // Feature 2: drop connection on empty space -> show quick-add menu
+  const onConnectEnd = useCallback<OnConnectEnd>(
+    (event, connectionState) => {
+      if (connectionState?.isValid) return
+      const conn = connectionState?.fromHandle
+        ? {
+            source: connectionState.fromNode?.id ?? null,
+            sourceHandle: connectionState.fromHandle?.id ?? null,
+          }
+        : null
+      pendingConnectionRef.current = conn
+
+      const clientX =
+        'clientX' in event ? event.clientX : event.touches[0].clientX
+      const clientY =
+        'clientY' in event ? event.clientY : event.touches[0].clientY
+      const flowPos = screenToFlowPosition({ x: clientX, y: clientY })
+      setQuickAdd({ x: clientX, y: clientY, flowPos })
+    },
+    [screenToFlowPosition]
+  )
+
   const addNode = useCallback(
-    (kind: WorkflowNodeKind) => {
+    (kind: WorkflowNodeKind, atFlowPos?: { x: number; y: number }) => {
       const rect = wrapperRef.current?.getBoundingClientRect()
-      const center = rect
+      const center = atFlowPos ?? (rect
         ? screenToFlowPosition({
             x: rect.left + rect.width / 2,
             y: rect.top + rect.height / 2,
           })
-        : { x: 200, y: 200 }
+        : { x: 200, y: 200 })
       const node: WorkflowRfNode = {
         id: nextNodeId(),
         type: 'workflow',
-        position: { x: center.x - 128, y: center.y - 80 },
+        position: { x: center.x - 128, y: center.y - 40 },
         data: {
           kind,
           values: buildDefaultValues(kind),
@@ -217,14 +270,38 @@ function CanvasInner() {
         },
       }
       setNodes((prev) => [...prev, node])
+
+      // Auto-connect if dropped from a handle
+      const conn = pendingConnectionRef.current
+      pendingConnectionRef.current = null
+      if (conn?.source) {
+        const def = WORKFLOW_NODE_DEFS[kind]
+        const firstInput = def.inputs[0]
+        if (firstInput) {
+          setEdges((eds) =>
+            addEdge(
+              {
+                source: conn.source!,
+                sourceHandle: conn.sourceHandle ?? null,
+                target: node.id,
+                targetHandle: firstInput.id,
+                animated: true,
+              },
+              eds
+            )
+          )
+        }
+      }
+      setQuickAdd(null)
     },
-    [handleWidgetChange, screenToFlowPosition, setNodes]
+    [handleWidgetChange, screenToFlowPosition, setEdges, setNodes]
   )
 
   const clearCanvas = useCallback(() => {
     setNodes([])
     setEdges([])
     setRunStatus({})
+    setLogs([])
   }, [setEdges, setNodes])
 
   const writePreview = useCallback(
@@ -247,6 +324,9 @@ function CanvasInner() {
     if (running) return
     setRunning(true)
     setRunStatus({})
+    setLogs([])
+    setLogOpen(true)
+    addLog({ type: 'info', time: Date.now(), message: t('Workflow started') })
 
     const runNodes: RunNode[] = nodes.map((n) => ({
       id: n.id,
@@ -260,23 +340,50 @@ function CanvasInner() {
       targetHandle: e.targetHandle ?? '',
     }))
 
+    const nodeLabel = (id: string) => {
+      const n = nodes.find((nd) => nd.id === id)
+      return n ? t(WORKFLOW_NODE_DEFS[n.data.kind].title) : id
+    }
+
     try {
-      const results = await runWorkflow(runNodes, runEdges, (nodeId, status) =>
+      const results = await runWorkflow(runNodes, runEdges, (nodeId, status) => {
         setRunStatus((prev) => ({ ...prev, [nodeId]: status }))
-      )
+        if (status === 'running') {
+          addLog({ type: 'info', time: Date.now(), message: `▶ ${nodeLabel(nodeId)}` })
+        } else if (status === 'done') {
+          addLog({ type: 'success', time: Date.now(), message: `✓ ${nodeLabel(nodeId)}` })
+        } else if (status === 'error') {
+          addLog({ type: 'error', time: Date.now(), message: `✗ ${nodeLabel(nodeId)}` })
+        }
+      })
       for (const r of results) {
+        if (r.error) {
+          addLog({ type: 'error', time: Date.now(), message: `${nodeLabel(r.nodeId)}: ${r.error}` })
+        }
         if (r.preview === undefined) continue
         const node = nodes.find((n) => n.id === r.nodeId)
         if (!node) continue
         const key = node.data.kind === 'show-text' ? 'text' : 'preview'
         writePreview(r.nodeId, key, r.preview)
+        if (r.preview.startsWith('data:image') || r.preview.startsWith('/') || r.preview.startsWith('http')) {
+          addLog({ type: 'image', time: Date.now(), message: nodeLabel(r.nodeId), imageUrl: r.preview })
+        } else if (r.preview) {
+          addLog({ type: 'success', time: Date.now(), message: `${nodeLabel(r.nodeId)}: ${r.preview.slice(0, 120)}` })
+        }
       }
-    } catch {
-      // Node-level errors are surfaced via runStatus badges on each node.
+      addLog({ type: 'success', time: Date.now(), message: t('Workflow finished') })
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err)
+      addLog({ type: 'error', time: Date.now(), message: msg })
     } finally {
       setRunning(false)
     }
-  }, [edges, nodes, running, writePreview])
+  }, [addLog, edges, nodes, running, t, writePreview])
+
+  // Auto-scroll log to bottom
+  useEffect(() => {
+    if (logOpen) logEndRef.current?.scrollIntoView({ behavior: 'smooth' })
+  }, [logs, logOpen])
 
   const groupedNodes = useMemo(() => {
     const groups = new Map<NodeCategory, typeof WORKFLOW_NODE_LIST>()
@@ -304,8 +411,41 @@ function CanvasInner() {
     [nodes, runStatus]
   )
 
+  const NodeMenu = (
+    <div className='pointer-events-none'>
+      {NODE_CATEGORY_ORDER.map((cat, idx) => {
+        const defs = groupedNodes.get(cat) ?? []
+        if (defs.length === 0) return null
+        return (
+          <div key={cat}>
+            {idx > 0 && <DropdownMenuSeparator />}
+            <DropdownMenuGroup>
+              <DropdownMenuLabel className='flex items-center gap-1.5'>
+                <span
+                  className='size-2 rounded-full'
+                  style={{ background: CATEGORY_ACCENT[cat] }}
+                />
+                {t(cat)}
+              </DropdownMenuLabel>
+              {defs.map((def) => (
+                <DropdownMenuItem
+                  key={def.kind}
+                  className='pointer-events-auto'
+                  onSelect={() => addNode(def.kind)}
+                >
+                  {t(def.title)}
+                </DropdownMenuItem>
+              ))}
+            </DropdownMenuGroup>
+          </div>
+        )
+      })}
+    </div>
+  )
+
   return (
     <div ref={wrapperRef} className='workflow-canvas relative h-full w-full'>
+      {/* Toolbar */}
       <div className='workflow-toolbar absolute top-4 left-5 z-10 flex items-center gap-1.5'>
         <div className='workflow-toolbar-context' aria-hidden='true'>
           <Workflow className='size-3.5' />
@@ -368,7 +508,25 @@ function CanvasInner() {
         </Button>
       </div>
 
-      <div className='workflow-run-dock absolute top-4 right-5 z-10'>
+      {/* Run dock */}
+      <div className='workflow-run-dock absolute top-4 right-5 z-10 flex items-center gap-2'>
+        <button
+          type='button'
+          title={t('Logs')}
+          onClick={() => setLogOpen((v) => !v)}
+          className={cn(
+            'workflow-log-toggle flex items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-xs font-medium transition-colors',
+            logOpen
+              ? 'border-indigo-300 bg-indigo-50 text-indigo-700'
+              : 'border-transparent bg-white/70 text-slate-500 hover:bg-white hover:text-slate-700'
+          )}
+        >
+          <PanelRightOpen className='size-3.5' />
+          {t('Logs')}
+          {logs.some((l) => l.type === 'error') && (
+            <span className='size-1.5 rounded-full bg-red-500' />
+          )}
+        </button>
         <div className='workflow-run-meta'>
           <CircleDot className='size-3' aria-hidden='true' />
           <span>{edges.length} LINKS</span>
@@ -388,6 +546,119 @@ function CanvasInner() {
         </Button>
       </div>
 
+      {/* Feature 1: Log panel */}
+      {logOpen && (
+        <div className='workflow-log-panel absolute top-14 right-5 bottom-12 z-20 flex w-72 flex-col rounded-xl border border-slate-200 bg-white/95 shadow-lg backdrop-blur-sm'>
+          <div className='flex items-center justify-between border-b border-slate-100 px-3 py-2'>
+            <span className='text-xs font-semibold text-slate-600 uppercase tracking-wide'>{t('Run logs')}</span>
+            <button
+              type='button'
+              onClick={() => setLogOpen(false)}
+              className='rounded p-0.5 text-slate-400 hover:text-slate-700'
+            >
+              <X className='size-3.5' />
+            </button>
+          </div>
+          <div className='flex-1 overflow-y-auto p-2 space-y-1'>
+            {logs.length === 0 && (
+              <p className='py-6 text-center text-[11px] text-slate-400'>{t('No logs yet. Run the workflow.')}</p>
+            )}
+            {logs.map((entry, i) => (
+              <div key={i} className='text-[11px]'>
+                {entry.type === 'image' ? (
+                  <div className='rounded-lg overflow-hidden border border-slate-100'>
+                    <div className='flex items-center gap-1 bg-slate-50 px-2 py-1'>
+                      <ImageIcon className='size-3 text-emerald-500' />
+                      <span className='font-medium text-slate-600'>{entry.message}</span>
+                      <span className='ml-auto text-slate-400'>{fmtTime(entry.time)}</span>
+                    </div>
+                    <img src={entry.imageUrl} alt='' className='w-full object-contain max-h-48' />
+                  </div>
+                ) : (
+                  <div className={cn(
+                    'flex items-start gap-1.5 rounded px-2 py-1',
+                    entry.type === 'error' && 'bg-red-50',
+                    entry.type === 'success' && 'bg-emerald-50',
+                    entry.type === 'info' && 'bg-slate-50',
+                  )}>
+                    {entry.type === 'error' && <AlertCircle className='mt-0.5 size-3 shrink-0 text-red-500' />}
+                    {entry.type === 'success' && <CheckCircle2 className='mt-0.5 size-3 shrink-0 text-emerald-500' />}
+                    {entry.type === 'info' && <Info className='mt-0.5 size-3 shrink-0 text-slate-400' />}
+                    <span className={cn(
+                      'flex-1 break-all',
+                      entry.type === 'error' && 'text-red-700',
+                      entry.type === 'success' && 'text-emerald-700',
+                      entry.type === 'info' && 'text-slate-500',
+                    )}>{entry.message}</span>
+                    <span className='shrink-0 text-slate-300'>{fmtTime(entry.time)}</span>
+                  </div>
+                )}
+              </div>
+            ))}
+            <div ref={logEndRef} />
+          </div>
+          {logs.length > 0 && (
+            <div className='border-t border-slate-100 px-3 py-1.5'>
+              <button
+                type='button'
+                onClick={() => setLogs([])}
+                className='text-[11px] text-slate-400 hover:text-slate-600'
+              >
+                {t('Clear logs')}
+              </button>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Feature 2: Quick-add popup on connection drop */}
+      {quickAdd && (
+        <div
+          className='fixed z-[9999] w-52 rounded-xl border border-slate-200 bg-white shadow-xl'
+          style={{ left: quickAdd.x + 8, top: quickAdd.y - 8 }}
+          onMouseLeave={() => {
+            pendingConnectionRef.current = null
+            setQuickAdd(null)
+          }}
+        >
+          <div className='border-b border-slate-100 px-3 py-2 text-[11px] font-semibold text-slate-500 uppercase tracking-wide flex items-center justify-between'>
+            {t('Add node')}
+            <button
+              type='button'
+              onClick={() => { pendingConnectionRef.current = null; setQuickAdd(null) }}
+              className='text-slate-400 hover:text-slate-600'
+            >
+              <X className='size-3' />
+            </button>
+          </div>
+          <div className='max-h-72 overflow-y-auto p-1'>
+            {NODE_CATEGORY_ORDER.map((cat, idx) => {
+              const defs = groupedNodes.get(cat) ?? []
+              if (defs.length === 0) return null
+              return (
+                <div key={cat}>
+                  {idx > 0 && <div className='my-1 border-t border-slate-100' />}
+                  <div className='px-2 py-1 text-[10px] font-semibold uppercase tracking-wide text-slate-400 flex items-center gap-1.5'>
+                    <span className='size-1.5 rounded-full' style={{ background: CATEGORY_ACCENT[cat] }} />
+                    {t(cat)}
+                  </div>
+                  {defs.map((def) => (
+                    <button
+                      key={def.kind}
+                      type='button'
+                      className='w-full rounded px-2 py-1.5 text-left text-[12px] text-slate-700 hover:bg-slate-100 active:bg-slate-200'
+                      onMouseDown={(e) => { e.preventDefault(); addNode(def.kind, quickAdd!.flowPos) }}
+                    >
+                      {t(def.title)}
+                    </button>
+                  ))}
+                </div>
+              )
+            })}
+          </div>
+        </div>
+      )}
+
       <ReactFlow
         className='studio-reactflow'
         nodes={displayNodes}
@@ -396,6 +667,9 @@ function CanvasInner() {
         onNodesChange={onNodesChange}
         onEdgesChange={onEdgesChange}
         onConnect={onConnect}
+        onConnectEnd={onConnectEnd}
+        onPaneClick={() => { pendingConnectionRef.current = null; setQuickAdd(null) }}
+        // Feature 3: select edge then Delete/Backspace to delete
         deleteKeyCode={['Backspace', 'Delete']}
         fitView
         fitViewOptions={{ padding: 0.22, maxZoom: 1.05 }}

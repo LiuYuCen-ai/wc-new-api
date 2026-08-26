@@ -103,7 +103,7 @@ function saveVideoHistory(history: VideoHistoryItem[]) {
   window.sessionStorage.setItem(VIDEO_HISTORY_KEY, JSON.stringify(history))
 }
 
-export function VideoPanel() {
+export function VideoPanel({ view = 'workbench' }: { view?: 'workbench' | 'history' }) {
   const { t } = useTranslation()
   const [params, setParams] = useState<VideoParams>(DEFAULT_PARAMS)
   const [loading, setLoading] = useState(false)
@@ -236,6 +236,77 @@ export function VideoPanel() {
       saveVideoHistory(next)
       return next
     })
+  }
+
+  if (view === 'history') {
+    return (
+      <Card className='min-w-0'>
+        <CardContent className='space-y-3 p-5'>
+          <div className='flex min-w-0 items-center gap-2'>
+            <History className='text-primary h-4 w-4 shrink-0' />
+            <h2 className='min-w-0 text-sm font-semibold break-words'>
+              {t('History')}
+            </h2>
+          </div>
+          {history.length > 0 ? (
+            <div className='grid gap-3 sm:grid-cols-2 xl:grid-cols-3'>
+              {history.map((item) => (
+                <div
+                  key={item.id}
+                  className='group bg-background hover:border-primary hover:bg-muted/40 relative flex min-w-0 flex-col overflow-hidden rounded-md border text-left transition-colors'
+                >
+                  <button
+                    type='button'
+                    onClick={() => selectHistoryItem(item)}
+                    className='flex min-w-0 flex-1 flex-col text-left'
+                  >
+                    {item.url ? (
+                      <video
+                        src={item.url}
+                        className='h-[160px] w-full bg-black object-cover'
+                        muted
+                        playsInline
+                      />
+                    ) : (
+                      <div className='bg-muted/20 flex h-[160px] w-full items-center justify-center'>
+                        <Sparkles className='text-muted-foreground h-6 w-6' />
+                      </div>
+                    )}
+                    <div className='w-full space-y-1 p-3'>
+                      <p className='truncate pr-7 text-sm font-medium'>
+                        {item.model || t('Not set')}
+                      </p>
+                      <p className='text-muted-foreground line-clamp-2 text-xs leading-relaxed'>
+                        {item.prompt}
+                      </p>
+                      <div className='text-muted-foreground flex items-center justify-between gap-2 text-[11px]'>
+                        <span>{item.duration}s</span>
+                        <span>{item.aspectRatio}</span>
+                        <span>{item.resolution}</span>
+                      </div>
+                    </div>
+                  </button>
+                  <Button
+                    type='button'
+                    variant='ghost'
+                    size='icon'
+                    className='text-muted-foreground hover:text-destructive absolute top-[168px] right-2 h-7 w-7'
+                    aria-label={t('Delete history')}
+                    onClick={() => deleteHistoryItem(item.id)}
+                  >
+                    <Trash2 className='h-4 w-4' />
+                  </Button>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <div className='text-muted-foreground rounded-md border border-dashed p-6 text-sm'>
+              {t('No history yet')}
+            </div>
+          )}
+        </CardContent>
+      </Card>
+    )
   }
 
   return (
@@ -423,6 +494,43 @@ export function VideoPanel() {
                   })}
                 </div>
               </div>
+
+              <div className='space-y-2'>
+                <Label htmlFor='video-prompt'>{t('Prompt')}</Label>
+                <Textarea
+                  id='video-prompt'
+                  rows={4}
+                  value={params.prompt}
+                  onChange={(e) => update('prompt', e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' && !e.shiftKey) {
+                      e.preventDefault()
+                      void handleSubmit()
+                    }
+                  }}
+                  placeholder={t('Video prompt placeholder')}
+                  className='max-h-48 min-h-24 resize-none'
+                />
+              </div>
+
+              <Button
+                type='submit'
+                disabled={loading}
+                className='w-full'
+                onClick={() => void handleSubmit()}
+              >
+                {loading ? (
+                  <>
+                    <Loader2 className='mr-2 h-4 w-4 animate-spin' />
+                    {t('Generating...')}
+                  </>
+                ) : (
+                  <>
+                    <Wand2 className='mr-2 h-4 w-4' />
+                    {t('Generate video')}
+                  </>
+                )}
+              </Button>
             </div>
           </CardContent>
         </Card>
@@ -556,53 +664,6 @@ export function VideoPanel() {
         </div>
       </div>
 
-      {/* Bottom prompt bar (fixed, chat-style) */}
-      <div className='pointer-events-none fixed inset-x-0 bottom-0 z-40'>
-        <div className='mx-auto w-full max-w-7xl px-4 pb-4 sm:px-6'>
-          <form
-            onSubmit={handleSubmit}
-            className='bg-background/95 pointer-events-auto flex flex-col gap-2 rounded-2xl border p-3 shadow-lg backdrop-blur supports-[backdrop-filter]:bg-background/80'
-            aria-label='video-prompt-bar'
-          >
-            <Label htmlFor='video-prompt' className='sr-only'>
-              {t('Prompt')}
-            </Label>
-            <Textarea
-              id='video-prompt'
-              rows={3}
-              value={params.prompt}
-              onChange={(e) => update('prompt', e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter' && !e.shiftKey) {
-                  e.preventDefault()
-                  void handleSubmit()
-                }
-              }}
-              placeholder={t('Video prompt placeholder')}
-              className='max-h-48 min-h-20 flex-1 resize-none border-0 bg-transparent px-1 shadow-none focus-visible:ring-0'
-            />
-            <div className='flex items-center justify-between gap-2'>
-              <div className='text-muted-foreground flex min-w-0 items-center gap-2 px-1 text-xs'>
-                <Film className='h-4 w-4 shrink-0' />
-                <span className='truncate'>{params.model || t('Not set')}</span>
-              </div>
-              <Button type='submit' disabled={loading} className='h-9 shrink-0'>
-                {loading ? (
-                  <>
-                    <Loader2 className='mr-2 h-4 w-4 animate-spin' />
-                    {t('Generating...')}
-                  </>
-                ) : (
-                  <>
-                    <Wand2 className='mr-2 h-4 w-4' />
-                    {t('Generate video')}
-                  </>
-                )}
-              </Button>
-            </div>
-          </form>
-        </div>
-      </div>
     </>
   )
 }

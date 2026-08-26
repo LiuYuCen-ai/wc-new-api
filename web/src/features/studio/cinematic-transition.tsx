@@ -42,7 +42,7 @@ const easeOutCubic = (value: number) => 1 - Math.pow(1 - value, 3)
 export function CinematicTransition({
   title = '万象生成',
   subtitle = 'COMPOSE THE UNSEEN',
-  duration = 10000,
+  duration = 5500,
   onComplete,
 }: CinematicTransitionProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null)

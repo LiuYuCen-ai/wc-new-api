@@ -170,6 +170,9 @@ export function SignUpForm({
       })
 
       if (res?.success) {
+        if (typeof window !== 'undefined' && typeof (window as any).fbq === 'function') {
+          ;(window as any).fbq('track', 'CompleteRegistration')
+        }
         toast.success(t('Account created! Please sign in'))
         redirectToLogin()
       } else {
