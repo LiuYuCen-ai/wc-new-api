@@ -672,12 +672,8 @@ export function Photo() {
               </div>
           </div>
 
-          {mode === 'video' && historyView === 'workbench' ? (
-            <VideoPanel />
-          ) : mode === 'video' && historyView === 'history' ? (
-            <div className='min-w-0'>
-              <VideoPanel view='history' />
-            </div>
+          {mode === 'video' ? (
+            <VideoPanel view={historyView} />
           ) : (
           <div className='grid min-w-0 grid-cols-1 gap-6 lg:grid-cols-[minmax(0,380px)_minmax(0,1fr)]'>
             {/* Left: parameters */}
