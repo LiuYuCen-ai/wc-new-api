@@ -238,78 +238,6 @@ export function VideoPanel({ view = 'workbench' }: { view?: 'workbench' | 'histo
     })
   }
 
-  if (view === 'history') {
-    return (
-      <Card className='flex min-h-[680px] min-w-0 flex-col overflow-hidden lg:max-h-[calc(100vh-4rem)]'>
-        <div className='flex flex-wrap items-center gap-3 border-b px-4 py-3 sm:px-5'>
-          <p className='text-muted-foreground text-xs leading-relaxed break-words sm:text-sm'>
-            {t('Your recent generation history is saved here and can be previewed at any time.')}
-          </p>
-        </div>
-        <CardContent className='min-h-0 flex-1 overflow-y-auto p-4 sm:p-5'>
-          {history.length > 0 ? (
-            <div className='grid gap-3 sm:grid-cols-2 xl:grid-cols-3'>
-              {history.map((item) => (
-                <div
-                  key={item.id}
-                  className='group bg-background hover:border-primary hover:bg-muted/40 relative flex min-w-0 flex-col overflow-hidden rounded-md border text-left transition-colors'
-                >
-                  <button
-                    type='button'
-                    onClick={() => selectHistoryItem(item)}
-                    className='flex min-w-0 flex-1 flex-col text-left'
-                  >
-                    {item.url ? (
-                      <video
-                        src={item.url}
-                        className='h-[160px] w-full bg-black object-cover'
-                        muted
-                        playsInline
-                      />
-                    ) : (
-                      <div className='bg-muted/20 flex h-[160px] w-full items-center justify-center'>
-                        <Sparkles className='text-muted-foreground h-6 w-6' />
-                      </div>
-                    )}
-                    <div className='w-full space-y-1 p-3'>
-                      <p className='truncate pr-7 text-sm font-medium'>
-                        {item.model || t('Not set')}
-                      </p>
-                      <p className='text-muted-foreground line-clamp-2 text-xs leading-relaxed'>
-                        {item.prompt}
-                      </p>
-                      <div className='text-muted-foreground flex items-center justify-between gap-2 text-[11px]'>
-                        <span>{item.duration}s</span>
-                        <span>{item.aspectRatio}</span>
-                        <span>{item.resolution}</span>
-                      </div>
-                    </div>
-                  </button>
-                  <Button
-                    type='button'
-                    variant='ghost'
-                    size='icon'
-                    className='text-muted-foreground hover:text-destructive absolute top-[168px] right-2 h-7 w-7'
-                    aria-label={t('Delete history')}
-                    onClick={() => deleteHistoryItem(item.id)}
-                  >
-                    <Trash2 className='h-4 w-4' />
-                  </Button>
-                </div>
-              ))}
-            </div>
-          ) : (
-            <div className='flex min-h-[400px] flex-col items-center justify-center gap-3'>
-              <p className='text-muted-foreground text-sm'>
-                {t('No history yet')}
-              </p>
-            </div>
-          )}
-        </CardContent>
-      </Card>
-    )
-  }
-
   return (
     <>
       <div className='grid min-w-0 grid-cols-1 gap-6 lg:grid-cols-[minmax(0,380px)_minmax(0,1fr)]'>
@@ -536,7 +464,74 @@ export function VideoPanel({ view = 'workbench' }: { view?: 'workbench' | 'histo
           </CardContent>
         </Card>
 
-        {/* Right: preview + history */}
+        {/* Right: preview or history */}
+        {view === 'history' ? (
+          <Card className='flex min-h-[680px] min-w-0 flex-col overflow-hidden lg:max-h-[calc(100vh-4rem)]'>
+            <div className='flex flex-wrap items-center gap-3 border-b px-4 py-3 sm:px-5'>
+              <p className='text-muted-foreground text-xs leading-relaxed break-words sm:text-sm'>
+                {t('Your recent generation history is saved here and can be previewed at any time.')}
+              </p>
+            </div>
+            <CardContent className='min-h-0 flex-1 overflow-y-auto p-4 sm:p-5'>
+              {history.length > 0 ? (
+                <div className='grid gap-3 sm:grid-cols-2 xl:grid-cols-3'>
+                  {history.map((item) => (
+                    <div
+                      key={item.id}
+                      className='group bg-background hover:border-primary hover:bg-muted/40 relative flex min-w-0 flex-col overflow-hidden rounded-md border text-left transition-colors'
+                    >
+                      <button
+                        type='button'
+                        onClick={() => selectHistoryItem(item)}
+                        className='flex min-w-0 flex-1 flex-col text-left'
+                      >
+                        {item.url ? (
+                          <video
+                            src={item.url}
+                            className='h-[160px] w-full bg-black object-cover'
+                            muted
+                            playsInline
+                          />
+                        ) : (
+                          <div className='bg-muted/20 flex h-[160px] w-full items-center justify-center'>
+                            <Sparkles className='text-muted-foreground h-6 w-6' />
+                          </div>
+                        )}
+                        <div className='w-full space-y-1 p-3'>
+                          <p className='truncate pr-7 text-sm font-medium'>
+                            {item.model || t('Not set')}
+                          </p>
+                          <p className='text-muted-foreground line-clamp-2 text-xs leading-relaxed'>
+                            {item.prompt}
+                          </p>
+                          <div className='text-muted-foreground flex items-center justify-between gap-2 text-[11px]'>
+                            <span>{item.duration}s</span>
+                            <span>{item.aspectRatio}</span>
+                            <span>{item.resolution}</span>
+                          </div>
+                        </div>
+                      </button>
+                      <Button
+                        type='button'
+                        variant='ghost'
+                        size='icon'
+                        className='text-muted-foreground hover:text-destructive absolute top-[168px] right-2 h-7 w-7'
+                        aria-label={t('Delete history')}
+                        onClick={() => deleteHistoryItem(item.id)}
+                      >
+                        <Trash2 className='h-4 w-4' />
+                      </Button>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div className='flex min-h-[400px] flex-col items-center justify-center'>
+                  <p className='text-muted-foreground text-sm'>{t('No history yet')}</p>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        ) : (
         <div className='min-w-0 space-y-4'>
           <Card className='min-w-0 overflow-hidden'>
             <CardContent className='p-0'>
@@ -663,8 +658,8 @@ export function VideoPanel({ view = 'workbench' }: { view?: 'workbench' | 'histo
             </CardContent>
           </Card>
         </div>
+        )}
       </div>
-
     </>
   )
 }
