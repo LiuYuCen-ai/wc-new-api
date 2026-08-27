@@ -16,7 +16,6 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-
 // 首页模型轮播的默认 JSON 配置。
 // 系统设置里对应配置为空时，首页和系统设置编辑框都会使用这份默认值。
 

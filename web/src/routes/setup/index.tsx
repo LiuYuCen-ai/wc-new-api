@@ -20,6 +20,10 @@ import { createFileRoute, redirect } from '@tanstack/react-router'
 
 import { SetupWizard } from '@/features/setup'
 import { getSetupStatus } from '@/features/setup/api'
+import {
+  rememberSetupCompleted,
+  shouldEnterSetup,
+} from '@/features/setup/setup-gate'
 
 export const Route = createFileRoute('/setup/')({
   beforeLoad: async () => {
@@ -31,7 +35,8 @@ export const Route = createFileRoute('/setup/')({
       return null
     })
 
-    if (status?.success && status.data?.status) {
+    if (!shouldEnterSetup(status)) {
+      rememberSetupCompleted()
       throw redirect({ to: '/' })
     }
   },

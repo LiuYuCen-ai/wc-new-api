@@ -21,6 +21,34 @@ import { splitBillingExprAndRequestRules } from '@/features/pricing/lib/billing-
 import { safeJsonParse } from '../utils/json-parser'
 import { formatPricingNumber } from './pricing-format'
 
+const jsonParseCache = new Map<string, unknown>()
+const JSON_PARSE_CACHE_LIMIT = 128
+
+function parseJsonCached<T>(value: string, fallback: T, context: string): T {
+  const trimmed = value.trim()
+  if (!trimmed) return fallback
+
+  const cached = jsonParseCache.get(trimmed)
+  if (cached !== undefined) {
+    return cached as T
+  }
+
+  const parsed = safeJsonParse<T>(trimmed, {
+    fallback,
+    context,
+  })
+
+  jsonParseCache.set(trimmed, parsed)
+  if (jsonParseCache.size > JSON_PARSE_CACHE_LIMIT) {
+    const oldestKey = jsonParseCache.keys().next().value
+    if (oldestKey !== undefined) {
+      jsonParseCache.delete(oldestKey)
+    }
+  }
+
+  return parsed
+}
+
 export type ModelPricingSnapshotInput = {
   modelPrice: string
   modelRatio: string
@@ -32,6 +60,7 @@ export type ModelPricingSnapshotInput = {
   audioCompletionRatio: string
   billingMode: string
   billingExpr: string
+  resolutionPrice: string
 }
 
 export type ModelPricingSnapshot = {
@@ -47,6 +76,7 @@ export type ModelPricingSnapshot = {
   billingMode?: string
   billingExpr?: string
   requestRuleExpr?: string
+  resolutionPrices?: Record<string, number>
   hasConflict: boolean
 }
 
@@ -64,6 +94,7 @@ export const hasPricingValue = (value?: string) =>
 export const isBasePricingUnset = (snapshot?: ModelPricingSnapshot) =>
   !snapshot ||
   (snapshot.billingMode !== 'tiered_expr' &&
+    snapshot.billingMode !== 'resolution' &&
     !hasPricingValue(snapshot.price) &&
     !hasPricingValue(snapshot.ratio))
 
@@ -83,14 +114,16 @@ const ratioToPrice = (ratio?: string, denominator?: string) => {
 export const getModeLabel = (mode?: string) => {
   if (mode === 'per-request') return 'Per-request'
   if (mode === 'tiered_expr') return 'Expression'
+  if (mode === 'resolution') return 'By resolution'
   return 'Per-token'
 }
 
 export const getModeVariant = (
   mode?: string
-): 'warning' | 'info' | 'success' => {
+): 'warning' | 'info' | 'success' | 'purple' => {
   if (mode === 'per-request') return 'warning'
   if (mode === 'tiered_expr') return 'info'
+  if (mode === 'resolution') return 'purple'
   return 'success'
 }
 
@@ -111,6 +144,14 @@ export const getPriceSummary = (
 ) => {
   if (row.billingMode === 'tiered_expr') {
     return getExpressionSummary(row, t)
+  }
+  if (row.billingMode === 'resolution') {
+    const entries = Object.entries(row.resolutionPrices ?? {})
+    if (entries.length === 0) return t('Unset price')
+    const [resolution, price] = entries[0]
+    return entries.length > 1
+      ? `${resolution} $${price} · ${entries.length} ${t('resolutions')}`
+      : `${resolution} $${price}`
   }
   if (row.billingMode === 'per-request') {
     return row.price ? `$${row.price} / ${t('request')}` : t('Unset price')
@@ -141,6 +182,9 @@ export const getPriceDetail = (
     return row.requestRuleExpr
       ? t('Includes request rules')
       : t('Expression based')
+  }
+  if (row.billingMode === 'resolution') {
+    return t('Price × seconds by resolution')
   }
   if (row.billingMode === 'per-request') {
     return t('Fixed request price')
@@ -174,47 +218,41 @@ export const buildModelSnapshots = ({
   audioCompletionRatio,
   billingMode,
   billingExpr,
+  resolutionPrice = '{}',
 }: ModelPricingSnapshotInput): ModelPricingSnapshot[] => {
-  const priceMap = safeJsonParse<Record<string, number>>(modelPrice, {
-    fallback: {},
-    context: 'model prices',
-  })
-  const ratioMap = safeJsonParse<Record<string, number>>(modelRatio, {
-    fallback: {},
-    context: 'model ratios',
-  })
-  const cacheMap = safeJsonParse<Record<string, number>>(cacheRatio, {
-    fallback: {},
-    context: 'cache ratios',
-  })
-  const createCacheMap = safeJsonParse<Record<string, number>>(
+  const priceMap = parseJsonCached<Record<string, number>>(modelPrice, {}, 'model prices')
+  const ratioMap = parseJsonCached<Record<string, number>>(modelRatio, {}, 'model ratios')
+  const cacheMap = parseJsonCached<Record<string, number>>(cacheRatio, {}, 'cache ratios')
+  const createCacheMap = parseJsonCached<Record<string, number>>(
     createCacheRatio,
-    { fallback: {}, context: 'create cache ratios' }
+    {},
+    'create cache ratios'
   )
-  const completionMap = safeJsonParse<Record<string, number>>(completionRatio, {
-    fallback: {},
-    context: 'completion ratios',
-  })
-  const imageMap = safeJsonParse<Record<string, number>>(imageRatio, {
-    fallback: {},
-    context: 'image ratios',
-  })
-  const audioMap = safeJsonParse<Record<string, number>>(audioRatio, {
-    fallback: {},
-    context: 'audio ratios',
-  })
-  const audioCompletionMap = safeJsonParse<Record<string, number>>(
+  const completionMap = parseJsonCached<Record<string, number>>(
+    completionRatio,
+    {},
+    'completion ratios'
+  )
+  const imageMap = parseJsonCached<Record<string, number>>(imageRatio, {}, 'image ratios')
+  const audioMap = parseJsonCached<Record<string, number>>(audioRatio, {}, 'audio ratios')
+  const audioCompletionMap = parseJsonCached<Record<string, number>>(
     audioCompletionRatio,
-    { fallback: {}, context: 'audio completion ratios' }
+    {},
+    'audio completion ratios'
   )
-  const billingModeMap = safeJsonParse<Record<string, string>>(billingMode, {
-    fallback: {},
-    context: 'billing mode',
-  })
-  const billingExprMap = safeJsonParse<Record<string, string>>(billingExpr, {
-    fallback: {},
-    context: 'billing expression',
-  })
+  const billingModeMap = parseJsonCached<Record<string, string>>(
+    billingMode,
+    {},
+    'billing mode'
+  )
+  const billingExprMap = parseJsonCached<Record<string, string>>(
+    billingExpr,
+    {},
+    'billing expression'
+  )
+  const resolutionPriceMap = parseJsonCached<
+    Record<string, Record<string, number>>
+  >(resolutionPrice, {}, 'resolution prices')
 
   const modelNames = new Set([
     ...Object.keys(priceMap),
@@ -227,9 +265,10 @@ export const buildModelSnapshots = ({
     ...Object.keys(audioCompletionMap),
     ...Object.keys(billingModeMap),
     ...Object.keys(billingExprMap),
+    ...Object.keys(resolutionPriceMap),
   ])
 
-  return Array.from(modelNames).map((name) => {
+  return [...modelNames].map((name) => {
     const price = priceMap[name]?.toString() || ''
     const ratio = ratioMap[name]?.toString() || ''
     const cache = cacheMap[name]?.toString() || ''
@@ -249,6 +288,23 @@ export const buildModelSnapshots = ({
         billingMode: 'tiered_expr',
         billingExpr: pureExpr,
         requestRuleExpr,
+        price,
+        ratio,
+        cacheRatio: cache,
+        createCacheRatio: createCache,
+        completionRatio: completion,
+        imageRatio: image,
+        audioRatio: audio,
+        audioCompletionRatio: audioCompletion,
+        hasConflict: false,
+      }
+    }
+
+    if (modeForModel === 'resolution') {
+      return {
+        name,
+        billingMode: 'resolution',
+        resolutionPrices: resolutionPriceMap[name],
         price,
         ratio,
         cacheRatio: cache,
@@ -299,5 +355,6 @@ export const getSnapshotSignature = (snapshot?: ModelPricingSnapshot) => {
     billingMode: snapshot.billingMode || 'per-token',
     billingExpr: snapshot.billingExpr || '',
     requestRuleExpr: snapshot.requestRuleExpr || '',
+    resolutionPrices: snapshot.resolutionPrices || {},
   })
 }

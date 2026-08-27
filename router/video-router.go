@@ -41,6 +41,18 @@ func SetVideoRouter(router *gin.Engine) {
 		klingV1Router.GET("/videos/image2video/:task_id", controller.RelayTaskFetch)
 	}
 
+	// MiniMax official video API paths
+	// docs: https://platform.minimaxi.com/docs/api-reference/video-generation-v2-create
+	minimaxVideoRouter := router.Group("/")
+	minimaxVideoRouter.Use(middleware.RouteTag("relay"))
+	minimaxVideoRouter.Use(middleware.MiniMaxVideoRequestConvert(), middleware.TokenAuth(), middleware.Distribute())
+	{
+		minimaxVideoRouter.POST("/v2/video_generation", controller.RelayTask)
+		minimaxVideoRouter.GET("/v2/query/video_generation/:task_id", controller.RelayTaskFetch)
+		minimaxVideoRouter.POST("/v1/video_generation", controller.RelayTask)
+		minimaxVideoRouter.GET("/v1/query/video_generation", controller.RelayTaskFetch)
+	}
+
 	// Jimeng official API routes - direct mapping to official API format
 	jimengOfficialGroup := router.Group("jimeng")
 	jimengOfficialGroup.Use(middleware.RouteTag("relay"))

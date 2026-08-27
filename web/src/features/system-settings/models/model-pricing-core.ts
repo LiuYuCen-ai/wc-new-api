@@ -39,7 +39,11 @@ export type ModelPricingFormValues = z.infer<
   ReturnType<typeof createModelPricingSchema>
 >
 
-export type PricingMode = 'per-token' | 'per-request' | 'tiered_expr'
+export type PricingMode =
+  | 'per-token'
+  | 'per-request'
+  | 'tiered_expr'
+  | 'resolution'
 
 export type LaneKey =
   | 'completion'
@@ -62,6 +66,7 @@ export type ModelRatioData = {
   billingMode?: PricingMode
   billingExpr?: string
   requestRuleExpr?: string
+  resolutionPrices?: Record<string, number>
 }
 
 export type PreviewRow = {
@@ -215,7 +220,8 @@ export function buildPreviewRows(
   promptPrice: string,
   lanePrices: Record<LaneKey, string>,
   laneEnabled: Record<LaneKey, boolean>,
-  t: (key: string) => string
+  t: (key: string) => string,
+  resolutionPrices?: Record<string, number>
 ): PreviewRow[] {
   if (mode === 'tiered_expr') {
     const effectiveExpr = combineBillingExpr(billingExpr, requestRuleExpr)
@@ -227,6 +233,24 @@ export function buildPreviewRows(
         value: effectiveExpr || t('Empty'),
         multiline: true,
       },
+    ]
+  }
+
+  if (mode === 'resolution') {
+    const entries = Object.entries(resolutionPrices ?? {})
+    if (entries.length === 0) {
+      return [
+        { key: 'mode', label: t('Mode'), value: t('By resolution') },
+        { key: 'empty', label: t('Price summary'), value: t('Empty') },
+      ]
+    }
+    return [
+      { key: 'mode', label: t('Mode'), value: t('By resolution') },
+      ...entries.map(([resolution, price]) => ({
+        key: resolution,
+        label: resolution,
+        value: `$${price}`,
+      })),
     ]
   }
 

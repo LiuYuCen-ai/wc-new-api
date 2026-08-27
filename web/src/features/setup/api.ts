@@ -22,7 +22,8 @@ import type { SetupFormValues, SetupResponse } from './types'
 
 export async function getSetupStatus(): Promise<SetupResponse> {
   const res = await api.get('/api/setup', {
-    // We want fresh status on every visit.
+    skipErrorHandler: true,
+    skipAuthRefresh: true,
     params: {
       t: Date.now(),
     },

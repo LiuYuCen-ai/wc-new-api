@@ -77,6 +77,31 @@ func TestValidateMultipartDirectNormalizesImageField(t *testing.T) {
 	require.Equal(t, constant.TaskActionGenerate, info.Action)
 }
 
+func TestWithoutRequiredPromptAllowsEmptyTopLevelPrompt(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	newContext := func(body string) (*gin.Context, *RelayInfo) {
+		request := httptest.NewRequest(http.MethodPost, "/v1/video/generations", strings.NewReader(body))
+		request.Header.Set("Content-Type", "application/json")
+		context, _ := gin.CreateTestContext(httptest.NewRecorder())
+		context.Request = request
+		return context, &RelayInfo{TaskRelayInfo: &TaskRelayInfo{}}
+	}
+
+	body := `{"model":"MiniMax-H3","resolution":"768P","duration":5}`
+
+	context, info := newContext(body)
+	taskErr := ValidateBasicTaskRequest(context, info, constant.TaskActionGenerate)
+	require.NotNil(t, taskErr)
+	require.Equal(t, "invalid_request", taskErr.Code)
+
+	context, info = newContext(body)
+	require.Nil(t, ValidateBasicTaskRequest(context, info, constant.TaskActionGenerate, WithoutRequiredPrompt()))
+
+	context, info = newContext(body)
+	require.Nil(t, ValidateMultipartDirect(context, info, WithoutRequiredPrompt()))
+}
+
 // TestTaskDurationBounds guards the billing invariant that user-supplied
 // video duration (a quota multiplier via OtherRatio "seconds") is bounded, so
 // it can never overflow quota calculation into a negative charge.

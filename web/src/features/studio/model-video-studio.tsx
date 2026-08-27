@@ -62,8 +62,8 @@ const ASPECT_RATIOS = [
 ] as const
 
 const RESOLUTIONS = [
-  { value: '720p', label: '720p', hint: 'Balanced preview quality' },
-  { value: '1080p', label: '1080p', hint: 'Sharper output preview' },
+  { value: '720P', label: '720P', hint: 'Balanced preview quality' },
+  { value: '1080P', label: '1080P', hint: 'Sharper output preview' },
 ] as const
 
 const VIDEO_STATUS_KEYS: Record<VideoTaskStatus, string> = {
@@ -92,7 +92,7 @@ export function ModelVideoStudio({ model }: ModelVideoStudioProps) {
   const [aspectRatio, setAspectRatio] =
     useState<(typeof ASPECT_RATIOS)[number]['value']>('16:9')
   const [resolution, setResolution] =
-    useState<(typeof RESOLUTIONS)[number]['value']>('720p')
+    useState<(typeof RESOLUTIONS)[number]['value']>('720P')
   const [loading, setLoading] = useState(false)
   const [status, setStatus] = useState<VideoTaskStatus | null>(null)
   const [videoUrl, setVideoUrl] = useState<string | null>(null)

@@ -27,7 +27,7 @@ import * as z from 'zod'
 import { ConfirmDialog } from '@/components/confirm-dialog'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 
-import { resetModelRatios } from '../api'
+import { resetModelRatios, updateSystemOption } from '../api'
 import { SettingsPageTitleStatusPortal } from '../components/settings-page-context'
 import { SettingsSection } from '../components/settings-section'
 import { useUpdateOption } from '../hooks/use-update-option'
@@ -117,6 +117,7 @@ const createModelSchema = (t: Translate) =>
     ExposeRatioEnabled: z.boolean(),
     BillingMode: createJsonStringField(t),
     BillingExpr: createJsonStringField(t),
+    ResolutionPrice: createJsonStringField(t),
   })
 
 const createGroupSchema = (t: Translate) =>
@@ -138,6 +139,60 @@ const createGroupSchema = (t: Translate) =>
 
 type ModelFormValues = z.infer<ReturnType<typeof createModelSchema>>
 type GroupFormValues = z.infer<ReturnType<typeof createGroupSchema>>
+
+function normalizeModelFormValues(defaults: ModelFormValues) {
+  return {
+    ModelPrice: normalizeJsonString(defaults.ModelPrice),
+    ModelRatio: normalizeJsonString(defaults.ModelRatio),
+    CacheRatio: normalizeJsonString(defaults.CacheRatio),
+    CreateCacheRatio: normalizeJsonString(defaults.CreateCacheRatio),
+    CompletionRatio: normalizeJsonString(defaults.CompletionRatio),
+    ImageRatio: normalizeJsonString(defaults.ImageRatio),
+    AudioRatio: normalizeJsonString(defaults.AudioRatio),
+    AudioCompletionRatio: normalizeJsonString(defaults.AudioCompletionRatio),
+    ExposeRatioEnabled: defaults.ExposeRatioEnabled,
+    BillingMode: normalizeJsonString(defaults.BillingMode),
+    BillingExpr: normalizeJsonString(defaults.BillingExpr),
+    ResolutionPrice: normalizeJsonString(defaults.ResolutionPrice),
+  }
+}
+
+function modelFormValuesEqual(
+  left: ReturnType<typeof normalizeModelFormValues>,
+  right: ReturnType<typeof normalizeModelFormValues>
+) {
+  return (
+    left.ModelPrice === right.ModelPrice &&
+    left.ModelRatio === right.ModelRatio &&
+    left.CacheRatio === right.CacheRatio &&
+    left.CreateCacheRatio === right.CreateCacheRatio &&
+    left.CompletionRatio === right.CompletionRatio &&
+    left.ImageRatio === right.ImageRatio &&
+    left.AudioRatio === right.AudioRatio &&
+    left.AudioCompletionRatio === right.AudioCompletionRatio &&
+    left.ExposeRatioEnabled === right.ExposeRatioEnabled &&
+    left.BillingMode === right.BillingMode &&
+    left.BillingExpr === right.BillingExpr &&
+    left.ResolutionPrice === right.ResolutionPrice
+  )
+}
+
+function formatModelFormValues(defaults: ModelFormValues): ModelFormValues {
+  return {
+    ...defaults,
+    ModelPrice: formatJsonForTextarea(defaults.ModelPrice),
+    ModelRatio: formatJsonForTextarea(defaults.ModelRatio),
+    CacheRatio: formatJsonForTextarea(defaults.CacheRatio),
+    CreateCacheRatio: formatJsonForTextarea(defaults.CreateCacheRatio),
+    CompletionRatio: formatJsonForTextarea(defaults.CompletionRatio),
+    ImageRatio: formatJsonForTextarea(defaults.ImageRatio),
+    AudioRatio: formatJsonForTextarea(defaults.AudioRatio),
+    AudioCompletionRatio: formatJsonForTextarea(defaults.AudioCompletionRatio),
+    BillingMode: formatJsonForTextarea(defaults.BillingMode),
+    BillingExpr: formatJsonForTextarea(defaults.BillingExpr),
+    ResolutionPrice: formatJsonForTextarea(defaults.ResolutionPrice),
+  }
+}
 type RatioTabId =
   | 'models'
   | 'unset-models'
@@ -163,6 +218,7 @@ export function RatioSettingsCard({
   const { t } = useTranslation()
   const updateOption = useUpdateOption()
   const queryClient = useQueryClient()
+  const [isSavingModelRatios, setIsSavingModelRatios] = useState(false)
   const [confirmOpen, setConfirmOpen] = useState(false)
 
   const resetMutation = useMutation({
@@ -181,21 +237,7 @@ export function RatioSettingsCard({
     },
   })
 
-  const modelNormalizedDefaults = useRef({
-    ModelPrice: normalizeJsonString(modelDefaults.ModelPrice),
-    ModelRatio: normalizeJsonString(modelDefaults.ModelRatio),
-    CacheRatio: normalizeJsonString(modelDefaults.CacheRatio),
-    CreateCacheRatio: normalizeJsonString(modelDefaults.CreateCacheRatio),
-    CompletionRatio: normalizeJsonString(modelDefaults.CompletionRatio),
-    ImageRatio: normalizeJsonString(modelDefaults.ImageRatio),
-    AudioRatio: normalizeJsonString(modelDefaults.AudioRatio),
-    AudioCompletionRatio: normalizeJsonString(
-      modelDefaults.AudioCompletionRatio
-    ),
-    ExposeRatioEnabled: modelDefaults.ExposeRatioEnabled,
-    BillingMode: normalizeJsonString(modelDefaults.BillingMode),
-    BillingExpr: normalizeJsonString(modelDefaults.BillingExpr),
-  })
+  const modelNormalizedDefaults = useRef(normalizeModelFormValues(modelDefaults))
   const [savedModelValues, setSavedModelValues] = useState(
     modelNormalizedDefaults.current
   )
@@ -217,22 +259,8 @@ export function RatioSettingsCard({
 
   const modelForm = useForm<ModelFormValues>({
     resolver: zodResolver(modelSchema),
-    mode: 'onChange',
-    defaultValues: {
-      ...modelDefaults,
-      ModelPrice: formatJsonForTextarea(modelDefaults.ModelPrice),
-      ModelRatio: formatJsonForTextarea(modelDefaults.ModelRatio),
-      CacheRatio: formatJsonForTextarea(modelDefaults.CacheRatio),
-      CreateCacheRatio: formatJsonForTextarea(modelDefaults.CreateCacheRatio),
-      CompletionRatio: formatJsonForTextarea(modelDefaults.CompletionRatio),
-      ImageRatio: formatJsonForTextarea(modelDefaults.ImageRatio),
-      AudioRatio: formatJsonForTextarea(modelDefaults.AudioRatio),
-      AudioCompletionRatio: formatJsonForTextarea(
-        modelDefaults.AudioCompletionRatio
-      ),
-      BillingMode: formatJsonForTextarea(modelDefaults.BillingMode),
-      BillingExpr: formatJsonForTextarea(modelDefaults.BillingExpr),
-    },
+    mode: 'onSubmit',
+    defaultValues: formatModelFormValues(modelDefaults),
   })
 
   const groupForm = useForm<GroupFormValues>({
@@ -252,38 +280,16 @@ export function RatioSettingsCard({
   })
 
   useEffect(() => {
-    modelNormalizedDefaults.current = {
-      ModelPrice: normalizeJsonString(modelDefaults.ModelPrice),
-      ModelRatio: normalizeJsonString(modelDefaults.ModelRatio),
-      CacheRatio: normalizeJsonString(modelDefaults.CacheRatio),
-      CreateCacheRatio: normalizeJsonString(modelDefaults.CreateCacheRatio),
-      CompletionRatio: normalizeJsonString(modelDefaults.CompletionRatio),
-      ImageRatio: normalizeJsonString(modelDefaults.ImageRatio),
-      AudioRatio: normalizeJsonString(modelDefaults.AudioRatio),
-      AudioCompletionRatio: normalizeJsonString(
-        modelDefaults.AudioCompletionRatio
-      ),
-      ExposeRatioEnabled: modelDefaults.ExposeRatioEnabled,
-      BillingMode: normalizeJsonString(modelDefaults.BillingMode),
-      BillingExpr: normalizeJsonString(modelDefaults.BillingExpr),
+    const nextNormalized = normalizeModelFormValues(modelDefaults)
+    if (
+      modelFormValuesEqual(nextNormalized, modelNormalizedDefaults.current)
+    ) {
+      return
     }
-    setSavedModelValues(modelNormalizedDefaults.current)
 
-    modelForm.reset({
-      ...modelDefaults,
-      ModelPrice: formatJsonForTextarea(modelDefaults.ModelPrice),
-      ModelRatio: formatJsonForTextarea(modelDefaults.ModelRatio),
-      CacheRatio: formatJsonForTextarea(modelDefaults.CacheRatio),
-      CreateCacheRatio: formatJsonForTextarea(modelDefaults.CreateCacheRatio),
-      CompletionRatio: formatJsonForTextarea(modelDefaults.CompletionRatio),
-      ImageRatio: formatJsonForTextarea(modelDefaults.ImageRatio),
-      AudioRatio: formatJsonForTextarea(modelDefaults.AudioRatio),
-      AudioCompletionRatio: formatJsonForTextarea(
-        modelDefaults.AudioCompletionRatio
-      ),
-      BillingMode: formatJsonForTextarea(modelDefaults.BillingMode),
-      BillingExpr: formatJsonForTextarea(modelDefaults.BillingExpr),
-    })
+    modelNormalizedDefaults.current = nextNormalized
+    setSavedModelValues(nextNormalized)
+    modelForm.reset(formatModelFormValues(modelDefaults))
   }, [modelDefaults, modelForm])
 
   useEffect(() => {
@@ -327,11 +333,13 @@ export function RatioSettingsCard({
         ExposeRatioEnabled: values.ExposeRatioEnabled,
         BillingMode: normalizeJsonString(values.BillingMode),
         BillingExpr: normalizeJsonString(values.BillingExpr),
+        ResolutionPrice: normalizeJsonString(values.ResolutionPrice),
       }
 
       const apiKeyMap: Record<string, string> = {
         BillingMode: 'billing_setting.billing_mode',
         BillingExpr: 'billing_setting.billing_expr',
+        ResolutionPrice: 'billing_setting.resolution_price',
       }
 
       const updates = (
@@ -345,15 +353,52 @@ export function RatioSettingsCard({
         return
       }
 
-      for (const key of updates) {
-        const apiKey = apiKeyMap[key as string] || (key as string)
-        await updateOption.mutateAsync({ key: apiKey, value: normalized[key] })
-      }
+      setIsSavingModelRatios(true)
+      try {
+        for (const key of updates) {
+          const apiKey = apiKeyMap[key as string] || (key as string)
+          const data = await updateSystemOption({
+            key: apiKey,
+            value: normalized[key],
+          })
+          if (!data.success) {
+            toast.error(data.message || t('Failed to update setting'))
+            return
+          }
+        }
 
-      modelNormalizedDefaults.current = normalized
-      setSavedModelValues(normalized)
+        await queryClient.invalidateQueries({ queryKey: ['system-options'] })
+        toast.success(t('Model prices saved successfully'))
+
+        modelNormalizedDefaults.current = normalized
+        setSavedModelValues(normalized)
+        modelForm.reset({
+          ...values,
+          ModelPrice: formatJsonForTextarea(values.ModelPrice),
+          ModelRatio: formatJsonForTextarea(values.ModelRatio),
+          CacheRatio: formatJsonForTextarea(values.CacheRatio),
+          CreateCacheRatio: formatJsonForTextarea(values.CreateCacheRatio),
+          CompletionRatio: formatJsonForTextarea(values.CompletionRatio),
+          ImageRatio: formatJsonForTextarea(values.ImageRatio),
+          AudioRatio: formatJsonForTextarea(values.AudioRatio),
+          AudioCompletionRatio: formatJsonForTextarea(
+            values.AudioCompletionRatio
+          ),
+          BillingMode: formatJsonForTextarea(values.BillingMode),
+          BillingExpr: formatJsonForTextarea(values.BillingExpr),
+          ResolutionPrice: formatJsonForTextarea(values.ResolutionPrice),
+        })
+      } catch (error) {
+        toast.error(
+          error instanceof Error
+            ? error.message
+            : t('Failed to update setting')
+        )
+      } finally {
+        setIsSavingModelRatios(false)
+      }
     },
-    [t, updateOption]
+    [modelForm, queryClient, t]
   )
 
   const saveGroupRatios = useCallback(
@@ -427,7 +472,7 @@ export function RatioSettingsCard({
           savedValues={savedModelValues}
           onSave={saveModelRatios}
           onReset={handleResetRatios}
-          isSaving={updateOption.isPending}
+          isSaving={isSavingModelRatios}
           isResetting={resetMutation.isPending}
           variant={tab === 'unset-models' ? 'unset' : 'default'}
         />

@@ -1,11 +1,14 @@
 package ali
 
 import (
+	"net/http/httptest"
 	"strings"
 	"testing"
 
 	"github.com/QuantumNous/new-api/common"
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
+	"github.com/QuantumNous/new-api/setting/config"
+	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/require"
 )
 
@@ -169,4 +172,58 @@ func TestConvertToAliRequestWan25I2VKeepsLegacyImgURL(t *testing.T) {
 	require.NoError(t, err)
 	require.Contains(t, string(body), `"img_url"`)
 	require.NotContains(t, string(body), `"media"`)
+}
+
+func TestConvertToAliRequestHappyHorseUsesResolutionNotSize(t *testing.T) {
+	aliReq, err := (&TaskAdaptor{}).convertToAliRequest(testRelayInfo(), relaycommon.TaskSubmitReq{
+		Model:      "happyhorse-1.1-t2v",
+		Prompt:     "a horse running",
+		Resolution: "1080p",
+		Duration:   8,
+	})
+
+	require.NoError(t, err)
+	require.Equal(t, "1080P", aliReq.Parameters.Resolution)
+	require.Empty(t, aliReq.Parameters.Size)
+	require.Equal(t, 8, aliReq.Parameters.Duration)
+}
+
+func TestConvertToAliRequestHappyHorseDefaultsTo720p(t *testing.T) {
+	aliReq, err := (&TaskAdaptor{}).convertToAliRequest(testRelayInfo(), relaycommon.TaskSubmitReq{
+		Model:  "happyhorse-1.1-i2v",
+		Prompt: "animate",
+		Image:  "https://example.com/first.png",
+	})
+
+	require.NoError(t, err)
+	require.Equal(t, "720P", aliReq.Parameters.Resolution)
+	require.Empty(t, aliReq.Parameters.Size)
+	require.Equal(t, 5, aliReq.Parameters.Duration)
+}
+
+func TestEstimateBillingResolutionModeOnlyAddsSeconds(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	saved := map[string]string{}
+	require.NoError(t, config.GlobalConfig.SaveToDB(func(key, value string) error {
+		saved[key] = value
+		return nil
+	}))
+	t.Cleanup(func() {
+		require.NoError(t, config.GlobalConfig.LoadFromDB(saved))
+	})
+	require.NoError(t, config.GlobalConfig.LoadFromDB(map[string]string{
+		"billing_setting.billing_mode": `{"happyhorse-1.1-t2v":"resolution"}`,
+	}))
+
+	ctx, _ := gin.CreateTestContext(httptest.NewRecorder())
+	ctx.Set("task_request", relaycommon.TaskSubmitReq{
+		Model:      "happyhorse-1.1-t2v",
+		Resolution: "1080p",
+		Duration:   8,
+	})
+
+	ratios := (&TaskAdaptor{}).EstimateBilling(ctx, &relaycommon.RelayInfo{
+		OriginModelName: "happyhorse-1.1-t2v",
+	})
+	require.Equal(t, map[string]float64{"seconds": 8}, ratios)
 }

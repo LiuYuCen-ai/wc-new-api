@@ -19,6 +19,8 @@ import (
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
 	"github.com/QuantumNous/new-api/relaykit/dto"
 	"github.com/QuantumNous/new-api/service"
+	"github.com/QuantumNous/new-api/setting/billing_setting"
+	"github.com/QuantumNous/new-api/utils"
 
 	"github.com/pkg/errors"
 )
@@ -85,7 +87,7 @@ func (a *TaskAdaptor) Init(info *relaycommon.RelayInfo) {
 }
 
 func (a *TaskAdaptor) ValidateRequestAndSetAction(c *gin.Context, info *relaycommon.RelayInfo) *taskdto.TaskError {
-	if err := relaycommon.ValidateBasicTaskRequest(c, info, constant.TaskActionGenerate); err != nil {
+	if err := relaycommon.ValidateBasicTaskRequest(c, info, constant.TaskActionGenerate, relaycommon.WithoutRequiredPrompt()); err != nil {
 		return err
 	}
 	req, err := relaycommon.GetTaskRequest(c)
@@ -221,6 +223,11 @@ func (a *TaskAdaptor) GetChannelName() string {
 	return "vidu"
 }
 
+// EstimateBilling multiplies the resolution unit price by video seconds.
+func (a *TaskAdaptor) EstimateBilling(c *gin.Context, info *relaycommon.RelayInfo) map[string]float64 {
+	return utils.EstimateResolutionSeconds(c, info.OriginModelName, officialDuration(info.OriginModelName))
+}
+
 // ============================
 // helpers
 // ============================
@@ -230,15 +237,27 @@ func (a *TaskAdaptor) convertToRequestPayload(req *relaycommon.TaskSubmitReq, in
 		Model:             taskcommon.DefaultString(info.UpstreamModelName, "viduq1"),
 		Images:            req.Images,
 		Prompt:            req.Prompt,
-		Duration:          taskcommon.DefaultInt(req.Duration, 5),
-		Resolution:        taskcommon.DefaultString(req.Size, "1080p"),
+		Duration:          utils.ResolutionSeconds(*req, officialDuration(info.UpstreamModelName)),
+		Resolution:        taskcommon.DefaultString(taskcommon.DefaultString(req.Resolution, req.Size), "1080p"),
 		MovementAmplitude: "auto",
 		Bgm:               false,
 	}
 	if err := taskcommon.UnmarshalMetadata(req.Metadata, &r); err != nil {
 		return nil, errors.Wrap(err, "unmarshal metadata failed")
 	}
+	// platform.vidu.com docs use lowercase: 360p / 540p / 720p / 1080p.
+	r.Resolution = billing_setting.FormatResolutionLower(
+		taskcommon.DefaultString(r.Resolution, "1080p"),
+	)
 	return &r, nil
+}
+
+func officialDuration(model string) int {
+	name := strings.ToLower(model)
+	if strings.Contains(name, "vidu2.0") || strings.Contains(name, "vidu1.5") {
+		return 4
+	}
+	return 5
 }
 
 func (a *TaskAdaptor) ParseTaskResult(respBody []byte) (*relaycommon.TaskInfo, error) {

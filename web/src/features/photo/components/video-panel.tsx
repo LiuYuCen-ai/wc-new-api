@@ -55,7 +55,7 @@ const DEFAULT_PARAMS: VideoParams = {
   prompt: '',
   duration: '',
   aspectRatio: '16:9',
-  resolution: '720p',
+  resolution: '720P',
 }
 
 const VIDEO_HISTORY_KEY = 'quick-video-history'
@@ -82,8 +82,8 @@ const ASPECT_RATIOS = [
 ] as const
 
 const RESOLUTIONS = [
-  { value: '720p', label: '720p', hint: 'Balanced preview quality' },
-  { value: '1080p', label: '1080p', hint: 'Sharper output preview' },
+  { value: '720P', label: '720P', hint: 'Balanced preview quality' },
+  { value: '1080P', label: '1080P', hint: 'Sharper output preview' },
 ] as const
 
 function loadVideoHistory(): VideoHistoryItem[] {

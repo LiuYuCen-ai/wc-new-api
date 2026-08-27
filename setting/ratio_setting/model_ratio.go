@@ -267,6 +267,17 @@ var defaultModelRatio = map[string]float64{
 	"deepseek-ai/DeepSeek-R1":                 0.8,
 	"deepseek-ai/DeepSeek-V3-0324":            0.8,
 	"deepseek-ai/DeepSeek-V3.1":               0.8,
+	// 豆包 Seedance 视频：火山方舟刊例价（元/百万 token，无视频输入 480p/720p 基准档）
+	// 含视频输入/1080p/4K 由 task/doubao 的 OtherRatio（video_input）相对基准价缩放，结算时再乘分组倍率
+	"doubao-seedance-2-0":             0.046 * RMB, // ￥46 / 1M tokens
+	"doubao-seedance-2-0-fast":        0.037 * RMB, // ￥37 / 1M tokens
+	"doubao-seedance-2-0-mini":        0.023 * RMB, // ￥23 / 1M tokens
+	"doubao-seedance-2-5":             0.070 * RMB, // ￥70 / 1M tokens
+	"doubao-seedance-2-0-260128":      0.046 * RMB,
+	"doubao-seedance-2-0-fast-260128": 0.037 * RMB,
+	"doubao-seedance-2-0-mini-260615": 0.023 * RMB,
+	"doubao-seedance-2-5-260628":      0.070 * RMB,
+	"doubao-seedance-2-5-pro":         0.070 * RMB,
 }
 
 var defaultModelPrice = map[string]float64{

@@ -16,7 +16,6 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-
 const VISITOR_ID_KEY = 'site_analytics:v1:visitor_id'
 const SESSION_TRACKED_KEY_PREFIX = 'site_analytics:v1:session_tracked:'
 const MIN_DWELL_SECONDS = 3

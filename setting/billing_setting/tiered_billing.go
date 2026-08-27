@@ -11,20 +11,26 @@ import (
 const (
 	BillingModeRatio      = "ratio"
 	BillingModeTieredExpr = "tiered_expr"
+	BillingModeResolution = "resolution"
 	BillingModeField      = "billing_mode"
 	BillingExprField      = "billing_expr"
+	ResolutionPriceField  = "resolution_price"
+	DefaultResolution     = "720P"
 )
 
 // BillingSetting is managed by config.GlobalConfig.Register.
-// DB keys: billing_setting.billing_mode, billing_setting.billing_expr
+// DB keys: billing_setting.billing_mode, billing_setting.billing_expr,
+// billing_setting.resolution_price
 type BillingSetting struct {
-	BillingMode map[string]string `json:"billing_mode"`
-	BillingExpr map[string]string `json:"billing_expr"`
+	BillingMode     map[string]string             `json:"billing_mode"`
+	BillingExpr     map[string]string             `json:"billing_expr"`
+	ResolutionPrice map[string]map[string]float64 `json:"resolution_price"`
 }
 
 var billingSetting = BillingSetting{
-	BillingMode: make(map[string]string),
-	BillingExpr: make(map[string]string),
+	BillingMode:     make(map[string]string),
+	BillingExpr:     make(map[string]string),
+	ResolutionPrice: make(map[string]map[string]float64),
 }
 
 func init() {
@@ -56,12 +62,15 @@ func GetBillingExprCopy() map[string]string {
 }
 
 func GetPricingSyncData(base map[string]any) map[string]any {
-	extra := make(map[string]any, 2)
+	extra := make(map[string]any, 3)
 	if modes := GetBillingModeCopy(); len(modes) > 0 {
 		extra[BillingModeField] = modes
 	}
 	if exprs := GetBillingExprCopy(); len(exprs) > 0 {
 		extra[BillingExprField] = exprs
+	}
+	if prices := GetResolutionPriceCopy(); len(prices) > 0 {
+		extra[ResolutionPriceField] = prices
 	}
 	return lo.Assign(base, extra)
 }

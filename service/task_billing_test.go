@@ -10,8 +10,10 @@ import (
 	"time"
 
 	"github.com/QuantumNous/new-api/common"
+	"github.com/QuantumNous/new-api/constant"
 	"github.com/QuantumNous/new-api/model"
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
+	"github.com/QuantumNous/new-api/setting/ratio_setting"
 	"github.com/QuantumNous/new-api/types"
 	"github.com/glebarez/sqlite"
 	"github.com/shopspring/decimal"
@@ -847,4 +849,88 @@ func TestSettle_NonPerCallBilling_AppliesAdaptorAdjustment(t *testing.T) {
 	log := getLastLog(t)
 	require.NotNil(t, log)
 	assert.Equal(t, model.LogTypeRefund, log.Type)
+}
+
+func TestRecalculateTaskQuotaByTokens_SeedanceMiniAppliesOfficialVideoRatioAndGroupRatio(t *testing.T) {
+	truncate(t)
+	ctx := context.Background()
+
+	savedModelRatio := ratio_setting.ModelRatio2JSONString()
+	savedGroupRatio := ratio_setting.GroupRatio2JSONString()
+	t.Cleanup(func() {
+		require.NoError(t, ratio_setting.UpdateModelRatioByJSONString(savedModelRatio))
+		require.NoError(t, ratio_setting.UpdateGroupRatioByJSONString(savedGroupRatio))
+	})
+
+	const modelRatio = 2.0
+	const groupRatio = 0.5
+	const videoInput = 14.0 / 23.0 // Seedance 2.0 mini 官网：含视频 14 / 无视频 23
+	const totalTokens = 1000
+
+	require.NoError(t, ratio_setting.UpdateModelRatioByJSONString(`{"doubao-seedance-2-0-mini-260615": 2}`))
+	require.NoError(t, ratio_setting.UpdateGroupRatioByJSONString(`{"vip": 0.5, "default": 1}`))
+
+	const userID, tokenID, channelID = 40, 40, 40
+	const initQuota, preConsumed = 100000, 10000
+	const tokenRemain = 50000
+
+	seedUser(t, userID, initQuota)
+	seedToken(t, tokenID, userID, "sk-seedance-mini", tokenRemain)
+	seedChannel(t, channelID)
+
+	task := makeTask(userID, channelID, preConsumed, tokenID, BillingSourceWallet, 0)
+	task.Group = "vip"
+	task.Properties.OriginModelName = "doubao-seedance-2-0-mini-260615"
+	task.PrivateData.BillingContext.OriginModelName = "doubao-seedance-2-0-mini-260615"
+	task.PrivateData.BillingContext.OtherRatios = map[string]float64{"video_input": videoInput}
+
+	wantQuota := common.QuotaFromFloat(float64(totalTokens) * modelRatio * groupRatio * videoInput)
+	require.NotEqual(t, preConsumed, wantQuota)
+
+	RecalculateTaskQuotaByTokens(ctx, task, totalTokens)
+
+	assert.Equal(t, wantQuota, task.Quota)
+	assert.Equal(t, initQuota-(wantQuota-preConsumed), getUserQuota(t, userID))
+	assert.Equal(t, tokenRemain-(wantQuota-preConsumed), getTokenRemainQuota(t, tokenID))
+}
+
+func TestRecalculateTaskQuotaByTokens_IgnoresPrechargeOtherRatio(t *testing.T) {
+	truncate(t)
+	ctx := context.Background()
+
+	savedModelRatio := ratio_setting.ModelRatio2JSONString()
+	savedGroupRatio := ratio_setting.GroupRatio2JSONString()
+	t.Cleanup(func() {
+		require.NoError(t, ratio_setting.UpdateModelRatioByJSONString(savedModelRatio))
+		require.NoError(t, ratio_setting.UpdateGroupRatioByJSONString(savedGroupRatio))
+	})
+
+	const modelRatio = 2.0
+	const groupRatio = 1.0
+	const totalTokens = 1000
+
+	require.NoError(t, ratio_setting.UpdateModelRatioByJSONString(`{"doubao-seedance-2-0": 2}`))
+	require.NoError(t, ratio_setting.UpdateGroupRatioByJSONString(`{"default": 1}`))
+
+	const userID, tokenID, channelID = 41, 41, 41
+	const initQuota, preConsumed = 100000, 5000
+	const tokenRemain = 50000
+
+	seedUser(t, userID, initQuota)
+	seedToken(t, tokenID, userID, "sk-seedance-precharge", tokenRemain)
+	seedChannel(t, channelID)
+
+	task := makeTask(userID, channelID, preConsumed, tokenID, BillingSourceWallet, 0)
+	task.Properties.OriginModelName = "doubao-seedance-2-0"
+	task.PrivateData.BillingContext.OriginModelName = "doubao-seedance-2-0"
+	task.PrivateData.BillingContext.OtherRatios = map[string]float64{
+		constant.TaskOtherRatioPrecharge: 1.1,
+	}
+
+	wantQuota := common.QuotaFromFloat(float64(totalTokens) * modelRatio * groupRatio)
+	require.NotEqual(t, common.QuotaFromFloat(float64(totalTokens)*modelRatio*groupRatio*1.1), wantQuota)
+
+	RecalculateTaskQuotaByTokens(ctx, task, totalTokens)
+
+	assert.Equal(t, wantQuota, task.Quota)
 }

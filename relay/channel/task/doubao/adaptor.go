@@ -119,7 +119,7 @@ func (a *TaskAdaptor) Init(info *relaycommon.RelayInfo) {
 // ValidateRequestAndSetAction parses body, validates fields and sets default action.
 func (a *TaskAdaptor) ValidateRequestAndSetAction(c *gin.Context, info *relaycommon.RelayInfo) (taskErr *taskdto.TaskError) {
 	// Accept only POST /v1/video/generations as "generate" action.
-	return relaycommon.ValidateBasicTaskRequest(c, info, constant.TaskActionGenerate)
+	return relaycommon.ValidateBasicTaskRequest(c, info, constant.TaskActionGenerate, relaycommon.WithoutRequiredPrompt())
 }
 
 // BuildRequestURL constructs the upstream URL.
@@ -135,48 +135,49 @@ func (a *TaskAdaptor) BuildRequestHeader(_ *gin.Context, req *http.Request, _ *r
 	return nil
 }
 
-// EstimateBilling 根据请求 metadata 中的输出分辨率与是否包含视频输入，返回相对基准价的计费 OtherRatio。
+// EstimateBilling 按官网口径估算 token，预扣 1.1 倍；含视频输入时叠加 video_input 单价倍率。
+// precharge 仅用于提交预扣，结算阶段按上游实际 token 多退少补时会忽略该键。
 func (a *TaskAdaptor) EstimateBilling(c *gin.Context, info *relaycommon.RelayInfo) map[string]float64 {
 	req, err := relaycommon.GetTaskRequest(c)
 	if err != nil {
 		return nil
 	}
-	hasVideo := hasVideoInMetadata(req.Metadata)
-	resolution, _ := req.Metadata["resolution"].(string)
-	ratio, ok := GetVideoInputRatio(info.OriginModelName, resolution, hasVideo)
-	if !ok || ratio == 1.0 {
-		return nil
-	}
-	return map[string]float64{"video_input": ratio}
+	return seedanceEstimateBilling(req, info.OriginModelName, info.UpstreamModelName)
 }
 
 // hasVideoInMetadata 直接检查 metadata 的 content 数组是否包含 video_url 条目，
 // 避免构建完整的上游 requestPayload。
 func hasVideoInMetadata(metadata map[string]interface{}) bool {
+	return countVideosInMetadata(metadata) > 0
+}
+
+func countVideosInMetadata(metadata map[string]interface{}) int {
 	if metadata == nil {
-		return false
+		return 0
 	}
 	contentRaw, ok := metadata["content"]
 	if !ok {
-		return false
+		return 0
 	}
 	contentSlice, ok := contentRaw.([]interface{})
 	if !ok {
-		return false
+		return 0
 	}
+	count := 0
 	for _, item := range contentSlice {
 		itemMap, ok := item.(map[string]interface{})
 		if !ok {
 			continue
 		}
 		if itemMap["type"] == "video_url" {
-			return true
+			count++
+			continue
 		}
 		if _, has := itemMap["video_url"]; has {
-			return true
+			count++
 		}
 	}
-	return false
+	return count
 }
 
 // BuildRequestBody converts request into Doubao specific format.

@@ -45,7 +45,7 @@ type PlatformQueryResponse = {
 }
 
 function getVideoSize(params: VideoParams): string {
-  const edge = params.resolution === '1080p' ? 1080 : 720
+  const edge = params.resolution === '1080P' ? 1080 : 720
   if (params.aspectRatio === '9:16')
     return `${edge}x${Math.round((edge * 16) / 9)}`
   if (params.aspectRatio === '1:1') return `${edge}x${edge}`
@@ -84,6 +84,7 @@ export async function submitVideoTask(
     prompt: params.prompt.trim(),
     seconds: params.duration,
     size: getVideoSize(params),
+    resolution: params.resolution,
   }
   if (params.referenceImageUrl) {
     body.image = params.referenceImageUrl.trim()

@@ -18,8 +18,9 @@ For commercial licensing, please contact support@quantumnous.com
 */
 import { useQuery } from '@tanstack/react-query'
 import { Code2, Eye, RotateCcw, Save } from 'lucide-react'
-import { memo, useCallback, useEffect, useRef, useState } from 'react'
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { UseFormReturn } from 'react-hook-form'
+import { useWatch } from 'react-hook-form'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
 
@@ -37,6 +38,7 @@ import {
 import { Switch } from '@/components/ui/switch'
 import { getEnabledModels } from '@/features/channels/api'
 
+import { FormDirtyIndicator } from '../components/form-dirty-indicator'
 import {
   SettingsForm,
   SettingsSwitchContent,
@@ -46,6 +48,28 @@ import {
   ModelRatioVisualEditor,
   type ModelRatioVisualEditorHandle,
 } from './model-ratio-visual-editor'
+import { normalizeJsonString } from './utils'
+
+const PRICING_JSON_FIELD_MAP: Record<string, keyof ModelFormValues> = {
+  'billing_setting.billing_mode': 'BillingMode',
+  'billing_setting.billing_expr': 'BillingExpr',
+  'billing_setting.resolution_price': 'ResolutionPrice',
+}
+
+const PRICING_WATCH_FIELDS = [
+  'ModelPrice',
+  'ModelRatio',
+  'CacheRatio',
+  'CreateCacheRatio',
+  'CompletionRatio',
+  'ImageRatio',
+  'AudioRatio',
+  'AudioCompletionRatio',
+  'BillingMode',
+  'BillingExpr',
+  'ResolutionPrice',
+  'ExposeRatioEnabled',
+] as const satisfies ReadonlyArray<keyof ModelFormValues>
 
 type ModelFormValues = {
   ModelPrice: string
@@ -59,6 +83,7 @@ type ModelFormValues = {
   ExposeRatioEnabled: boolean
   BillingMode: string
   BillingExpr: string
+  ResolutionPrice: string
 }
 
 type ModelRatioFormProps = {
@@ -176,6 +201,7 @@ export const ModelRatioForm = memo(function ModelRatioForm({
   const { t } = useTranslation()
   const isUnsetVariant = variant === 'unset'
   const [editMode, setEditMode] = useState<'visual' | 'json'>('visual')
+  const [editorOpen, setEditorOpen] = useState(false)
   const visualEditorRef = useRef<ModelRatioVisualEditorHandle>(null)
 
   const enabledModelsQuery = useQuery({
@@ -199,7 +225,6 @@ export const ModelRatioForm = memo(function ModelRatioForm({
   const handleFieldChange = useCallback(
     (field: keyof ModelFormValues, value: string) => {
       form.setValue(field, value, {
-        shouldValidate: true,
         shouldDirty: true,
       })
     },
@@ -219,10 +244,101 @@ export const ModelRatioForm = memo(function ModelRatioForm({
     await form.handleSubmit(onSave)()
   }, [editMode, form, onSave])
 
+  const handlePersist = useCallback(async () => {
+    await form.handleSubmit(onSave)()
+  }, [form, onSave])
+
+  const [
+    watchedModelPrice,
+    watchedModelRatio,
+    watchedCacheRatio,
+    watchedCreateCacheRatio,
+    watchedCompletionRatio,
+    watchedImageRatio,
+    watchedAudioRatio,
+    watchedAudioCompletionRatio,
+    watchedBillingMode,
+    watchedBillingExpr,
+    watchedResolutionPrice,
+    watchedExposeRatioEnabled,
+  ] = useWatch({
+    control: form.control,
+    name: PRICING_WATCH_FIELDS,
+  })
+
+  const normalizedDraftValues = useMemo(
+    () => ({
+      ModelPrice: normalizeJsonString(watchedModelPrice ?? ''),
+      ModelRatio: normalizeJsonString(watchedModelRatio ?? ''),
+      CacheRatio: normalizeJsonString(watchedCacheRatio ?? ''),
+      CreateCacheRatio: normalizeJsonString(watchedCreateCacheRatio ?? ''),
+      CompletionRatio: normalizeJsonString(watchedCompletionRatio ?? ''),
+      ImageRatio: normalizeJsonString(watchedImageRatio ?? ''),
+      AudioRatio: normalizeJsonString(watchedAudioRatio ?? ''),
+      AudioCompletionRatio: normalizeJsonString(
+        watchedAudioCompletionRatio ?? ''
+      ),
+      BillingMode: normalizeJsonString(watchedBillingMode ?? ''),
+      BillingExpr: normalizeJsonString(watchedBillingExpr ?? ''),
+      ResolutionPrice: normalizeJsonString(watchedResolutionPrice ?? ''),
+    }),
+    [
+      watchedAudioCompletionRatio,
+      watchedAudioRatio,
+      watchedBillingExpr,
+      watchedBillingMode,
+      watchedCacheRatio,
+      watchedCompletionRatio,
+      watchedCreateCacheRatio,
+      watchedImageRatio,
+      watchedModelPrice,
+      watchedModelRatio,
+      watchedResolutionPrice,
+    ]
+  )
+
+  const hasUnsavedChanges = useMemo(() => {
+    if (editorOpen) return true
+
+    return (
+      normalizedDraftValues.ModelPrice !== savedValues.ModelPrice ||
+      normalizedDraftValues.ModelRatio !== savedValues.ModelRatio ||
+      normalizedDraftValues.CacheRatio !== savedValues.CacheRatio ||
+      normalizedDraftValues.CreateCacheRatio !== savedValues.CreateCacheRatio ||
+      normalizedDraftValues.CompletionRatio !== savedValues.CompletionRatio ||
+      normalizedDraftValues.ImageRatio !== savedValues.ImageRatio ||
+      normalizedDraftValues.AudioRatio !== savedValues.AudioRatio ||
+      normalizedDraftValues.AudioCompletionRatio !==
+        savedValues.AudioCompletionRatio ||
+      normalizedDraftValues.BillingMode !== savedValues.BillingMode ||
+      normalizedDraftValues.BillingExpr !== savedValues.BillingExpr ||
+      normalizedDraftValues.ResolutionPrice !== savedValues.ResolutionPrice ||
+      watchedExposeRatioEnabled !== savedValues.ExposeRatioEnabled
+    )
+  }, [
+    editorOpen,
+    normalizedDraftValues,
+    savedValues,
+    watchedExposeRatioEnabled,
+  ])
+
+  const handlePricingChange = useCallback(
+    (field: string, value: string) => {
+      const formField =
+        PRICING_JSON_FIELD_MAP[field] || (field as keyof ModelFormValues)
+      handleFieldChange(formField, value)
+    },
+    [handleFieldChange]
+  )
+
+  const isDirty = hasUnsavedChanges
+
   return (
     <div className='space-y-6'>
       {!isUnsetVariant && (
-        <div className='flex flex-wrap justify-end gap-2'>
+        <>
+          <FormDirtyIndicator isDirty={isDirty} />
+          <div className='flex flex-wrap justify-end gap-2'>
           <Button
             type='button'
             variant='destructive'
@@ -233,17 +349,15 @@ export const ModelRatioForm = memo(function ModelRatioForm({
             <RotateCcw data-icon='inline-start' />
             {t('Reset prices')}
           </Button>
-          {editMode === 'json' && (
-            <Button
-              type='button'
-              size='sm'
-              onClick={handleSave}
-              disabled={isSaving}
-            >
-              <Save data-icon='inline-start' />
-              {isSaving ? t('Saving...') : t('Save model prices')}
-            </Button>
-          )}
+          <Button
+            type='button'
+            size='sm'
+            onClick={handleSave}
+            disabled={isSaving || !isDirty}
+          >
+            <Save data-icon='inline-start' />
+            {isSaving ? t('Saving...') : t('Save model prices')}
+          </Button>
           <Button variant='outline' size='sm' onClick={toggleEditMode}>
             {editMode === 'visual' ? (
               <>
@@ -258,6 +372,7 @@ export const ModelRatioForm = memo(function ModelRatioForm({
             )}
           </Button>
         </div>
+        </>
       )}
 
       <Form {...form}>
@@ -275,16 +390,18 @@ export const ModelRatioForm = memo(function ModelRatioForm({
               savedAudioCompletionRatio={savedValues.AudioCompletionRatio}
               savedBillingMode={savedValues.BillingMode}
               savedBillingExpr={savedValues.BillingExpr}
-              modelPrice={form.watch('ModelPrice')}
-              modelRatio={form.watch('ModelRatio')}
-              cacheRatio={form.watch('CacheRatio')}
-              createCacheRatio={form.watch('CreateCacheRatio')}
-              completionRatio={form.watch('CompletionRatio')}
-              imageRatio={form.watch('ImageRatio')}
-              audioRatio={form.watch('AudioRatio')}
-              audioCompletionRatio={form.watch('AudioCompletionRatio')}
-              billingMode={form.watch('BillingMode')}
-              billingExpr={form.watch('BillingExpr')}
+              savedResolutionPrice={savedValues.ResolutionPrice}
+              modelPrice={watchedModelPrice ?? ''}
+              modelRatio={watchedModelRatio ?? ''}
+              cacheRatio={watchedCacheRatio ?? ''}
+              createCacheRatio={watchedCreateCacheRatio ?? ''}
+              completionRatio={watchedCompletionRatio ?? ''}
+              imageRatio={watchedImageRatio ?? ''}
+              audioRatio={watchedAudioRatio ?? ''}
+              audioCompletionRatio={watchedAudioCompletionRatio ?? ''}
+              billingMode={watchedBillingMode ?? ''}
+              billingExpr={watchedBillingExpr ?? ''}
+              resolutionPrice={watchedResolutionPrice ?? ''}
               candidateModelNames={
                 isUnsetVariant ? enabledModelsQuery.data?.data : undefined
               }
@@ -293,16 +410,10 @@ export const ModelRatioForm = memo(function ModelRatioForm({
               }
               filterMode={isUnsetVariant ? 'unset' : 'all'}
               onSave={handleSave}
+              onPersist={handlePersist}
+              onEditorOpenChange={setEditorOpen}
               isSaving={isSaving}
-              onChange={(field, value) => {
-                const fieldMap: Record<string, keyof ModelFormValues> = {
-                  'billing_setting.billing_mode': 'BillingMode',
-                  'billing_setting.billing_expr': 'BillingExpr',
-                }
-                const formField =
-                  fieldMap[field] || (field as keyof ModelFormValues)
-                handleFieldChange(formField, value)
-              }}
+              onChange={handlePricingChange}
             />
 
             {!isUnsetVariant && (

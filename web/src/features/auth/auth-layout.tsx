@@ -20,11 +20,11 @@ import { Link } from '@tanstack/react-router'
 import { useTranslation } from 'react-i18next'
 
 import { Skeleton } from '@/components/ui/skeleton'
-import { useSystemConfig } from '@/hooks/use-system-config'
-import { cn } from '@/lib/utils'
+import { AUTH_LAYOUT_SURFACE_CLASSES } from '@/features/auth/auth-layout-classes'
 import { AuthAnimationSidebar } from '@/features/auth/components/auth-animation/auth-animation-panel'
 import { AuthAnimationProvider } from '@/features/auth/context/auth-animation-context'
-
+import { useSystemConfig } from '@/hooks/use-system-config'
+import { cn } from '@/lib/utils'
 
 type AuthLayoutProps = {
   children: React.ReactNode
@@ -37,7 +37,7 @@ export function AuthLayout({ children, contentClassName }: AuthLayoutProps) {
 
   return (
     <AuthAnimationProvider>
-      <div className='min-h-svh bg-white'>
+      <div className={AUTH_LAYOUT_SURFACE_CLASSES}>
         <Link
           to='/'
           className='fixed top-4 left-4 z-30 flex items-center gap-3 text-xl font-semibold text-gray-900 transition-opacity hover:opacity-80 sm:top-8 sm:left-8'

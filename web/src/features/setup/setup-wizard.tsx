@@ -45,6 +45,7 @@ import { CompleteStep } from './components/complete-step'
 import { DatabaseStep } from './components/database-step'
 import { StepNavigation } from './components/step-navigation'
 import { UsageModeStep } from './components/usage-mode-step'
+import { rememberSetupCompleted } from './setup-gate'
 import type { SetupFormValues, SetupStatus } from './types'
 
 const STEPS = [
@@ -106,6 +107,7 @@ export function SetupWizard() {
     onSuccess: async (response) => {
       if (response.success) {
         toast.success(t('System initialized successfully! Redirecting…'))
+        rememberSetupCompleted()
         await queryClient.invalidateQueries({ queryKey: ['setup-status'] })
         setTimeout(() => {
           navigate({ to: '/' })
@@ -278,6 +280,27 @@ export function SetupWizard() {
     mutation.mutate(payload)
   }
 
+  let setupBody = (
+    <Form {...form}>
+      <form
+        className='space-y-6'
+        onSubmit={(event) => event.preventDefault()}
+      >
+        {currentStepComponent}
+      </form>
+    </Form>
+  )
+  if (isLoading) {
+    setupBody = <LoadingState message={t('Loading setup status…')} />
+  } else if (isError) {
+    setupBody = (
+      <ErrorState
+        title={t('We could not load the setup status.')}
+        onRetry={() => refetch()}
+      />
+    )
+  }
+
   return (
     <div className='bg-muted/40 relative min-h-svh py-10'>
       <div className='absolute top-4 right-4 sm:top-6 sm:right-6'>
@@ -325,27 +348,28 @@ export function SetupWizard() {
               {STEPS.map((step, index) => {
                 const isActive = currentStep === index
                 const isCompleted = currentStep > index
+                let cardClass = 'border-muted bg-card'
+                let badgeClass =
+                  'border-muted-foreground/40 text-muted-foreground'
+                if (isActive) {
+                  cardClass = 'border-primary ring-primary/20 ring-2'
+                  badgeClass =
+                    'border-primary bg-primary text-primary-foreground'
+                } else if (isCompleted) {
+                  cardClass = 'border-primary/40 bg-primary/5'
+                  badgeClass =
+                    'border-primary bg-primary text-primary-foreground'
+                }
                 return (
                   <li
                     key={step.titleKey}
-                    className={cn(
-                      'rounded-xl border p-3',
-                      isActive
-                        ? 'border-primary ring-primary/20 ring-2'
-                        : isCompleted
-                          ? 'border-primary/40 bg-primary/5'
-                          : 'border-muted bg-card'
-                    )}
+                    className={cn('rounded-xl border p-3', cardClass)}
                   >
                     <div className='flex items-start gap-3'>
                       <span
                         className={cn(
                           'flex size-6 items-center justify-center rounded-md border text-xs font-semibold',
-                          isActive
-                            ? 'border-primary bg-primary text-primary-foreground'
-                            : isCompleted
-                              ? 'border-primary bg-primary text-primary-foreground'
-                              : 'border-muted-foreground/40 text-muted-foreground'
+                          badgeClass
                         )}
                       >
                         {index + 1}
@@ -364,23 +388,7 @@ export function SetupWizard() {
               })}
             </ol>
 
-            {isLoading ? (
-              <LoadingState message={t('Loading setup status…')} />
-            ) : isError ? (
-              <ErrorState
-                title={t('We could not load the setup status.')}
-                onRetry={() => refetch()}
-              />
-            ) : (
-              <Form {...form}>
-                <form
-                  className='space-y-6'
-                  onSubmit={(event) => event.preventDefault()}
-                >
-                  {currentStepComponent}
-                </form>
-              </Form>
-            )}
+            {setupBody}
           </CardContent>
 
           {!isLoading && !isError && (

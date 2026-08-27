@@ -37,6 +37,9 @@ export function ModelBillingModeBadge(props: ModelBillingModeBadgeProps) {
   if (isDynamicPricingModel(props.model)) {
     label = t('Dynamic Pricing')
     variant = 'warning'
+  } else if (props.model.billing_mode === 'resolution') {
+    label = t('By resolution')
+    variant = 'purple'
   } else if (isTokenBasedModel(props.model)) {
     label = t('Token-based')
     variant = 'info'
