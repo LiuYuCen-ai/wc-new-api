@@ -411,38 +411,6 @@ function CanvasInner() {
     [nodes, runStatus]
   )
 
-  const NodeMenu = (
-    <div className='pointer-events-none'>
-      {NODE_CATEGORY_ORDER.map((cat, idx) => {
-        const defs = groupedNodes.get(cat) ?? []
-        if (defs.length === 0) return null
-        return (
-          <div key={cat}>
-            {idx > 0 && <DropdownMenuSeparator />}
-            <DropdownMenuGroup>
-              <DropdownMenuLabel className='flex items-center gap-1.5'>
-                <span
-                  className='size-2 rounded-full'
-                  style={{ background: CATEGORY_ACCENT[cat] }}
-                />
-                {t(cat)}
-              </DropdownMenuLabel>
-              {defs.map((def) => (
-                <DropdownMenuItem
-                  key={def.kind}
-                  className='pointer-events-auto'
-                  onSelect={() => addNode(def.kind)}
-                >
-                  {t(def.title)}
-                </DropdownMenuItem>
-              ))}
-            </DropdownMenuGroup>
-          </div>
-        )
-      })}
-    </div>
-  )
-
   return (
     <div ref={wrapperRef} className='workflow-canvas relative h-full w-full'>
       {/* Toolbar */}

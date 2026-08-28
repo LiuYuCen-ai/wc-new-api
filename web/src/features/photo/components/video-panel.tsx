@@ -21,8 +21,6 @@ import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
 import {
   Download,
-  Film,
-  History,
   ImagePlus,
   Loader2,
   Sparkles,

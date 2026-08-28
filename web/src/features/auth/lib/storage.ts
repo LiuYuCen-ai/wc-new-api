@@ -27,6 +27,7 @@ For commercial licensing, please contact support@quantumnous.com
 const STORAGE_KEYS = {
   AFFILIATE: 'aff',
   STATUS: 'status',
+  AD_SOURCE: 'ad_source',
 } as const
 
 // ============================================================================
@@ -57,5 +58,35 @@ export function saveAffiliateCode(code: string): void {
   } catch (error) {
     // eslint-disable-next-line no-console
     console.error('Failed to save affiliate code:', error)
+  }
+}
+
+// ============================================================================
+// Ad Source Storage
+// ============================================================================
+
+/**
+ * Save ad source to sessionStorage (valid for this visit only)
+ */
+export function saveAdSource(source: string): void {
+  if (typeof window === 'undefined') return
+  try {
+    window.sessionStorage.setItem(STORAGE_KEYS.AD_SOURCE, source)
+  } catch {
+    // ignore
+  }
+}
+
+/**
+ * Get ad source from sessionStorage, then clear it
+ */
+export function consumeAdSource(): string {
+  if (typeof window === 'undefined') return ''
+  try {
+    const value = window.sessionStorage.getItem(STORAGE_KEYS.AD_SOURCE) ?? ''
+    window.sessionStorage.removeItem(STORAGE_KEYS.AD_SOURCE)
+    return value
+  } catch {
+    return ''
   }
 }

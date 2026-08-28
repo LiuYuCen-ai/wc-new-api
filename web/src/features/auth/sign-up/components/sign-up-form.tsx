@@ -46,7 +46,9 @@ import { useAuthRedirect } from '@/features/auth/hooks/use-auth-redirect'
 import { useEmailVerification } from '@/features/auth/hooks/use-email-verification'
 import { useTurnstile } from '@/features/auth/hooks/use-turnstile'
 import {
+  consumeAdSource,
   getAffiliateCode,
+  saveAdSource,
   saveAffiliateCode,
 } from '@/features/auth/lib/storage'
 import { useStatus } from '@/hooks/use-status'
@@ -132,9 +134,20 @@ export function SignUpForm({
   }, [requiresLegalConsent])
 
   useEffect(() => {
-    const aff = new URLSearchParams(window.location.search).get('aff')?.trim()
+    const params = new URLSearchParams(window.location.search)
+    const aff = params.get('aff')?.trim()
     if (aff) {
       saveAffiliateCode(aff)
+    }
+    const utmSource = params.get('utm_source')?.trim().toLowerCase()
+    const ref = params.get('ref')?.trim().toLowerCase()
+    const source = utmSource ?? ref
+    if (source === 'meta' || source === 'facebook') {
+      saveAdSource('meta')
+    } else if (source === 'google') {
+      saveAdSource('google')
+    } else if (source === 'tiktok') {
+      saveAdSource('tiktok')
     }
   }, [])
 
@@ -170,8 +183,17 @@ export function SignUpForm({
       })
 
       if (res?.success) {
-        if (typeof window !== 'undefined' && typeof (window as any).fbq === 'function') {
-          ;(window as any).fbq('track', 'CompleteRegistration')
+        const adSource = consumeAdSource()
+        const registrationId = crypto.randomUUID()
+        if (adSource === 'meta' && typeof (window as any).fbq === 'function') {
+          ;(window as any).fbq('track', 'CompleteRegistration', {}, { eventID: registrationId })
+        } else if (adSource === 'google' && typeof (window as any).gtag === 'function') {
+          ;(window as any).gtag('event', 'conversion', {
+            send_to: 'AW-18383534695/AJwECo7Jq-kcEOF0-b1E',
+            transaction_id: registrationId,
+          })
+        } else if (adSource === 'tiktok' && typeof (window as any).ttq === 'object') {
+          ;(window as any).ttq.track('CompleteRegistration')
         }
         toast.success(t('Account created! Please sign in'))
         redirectToLogin()
