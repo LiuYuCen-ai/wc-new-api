@@ -16,14 +16,12 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
+import { t } from 'i18next'
 import { api } from '@/lib/api'
 import { API_ENDPOINTS } from '@/features/playground/constants'
-import type { PhotoModel, PhotoParams, PhotoResult } from './types'
-import { PHOTO_MODELS } from './constants'
-
-function isGeminiImage(model: string) {
-  return model.startsWith('gemini-')
-}
+import { resolvePhotoSize } from './constants'
+import { resolvePhotoCallKind } from './lib/photo-models'
+import type { PhotoParams, PhotoResult } from './types'
 
 export type GeneratePhotoResponse = {
   images: PhotoResult[]
@@ -34,20 +32,18 @@ export type GeneratePhotoResponse = {
 }
 
 /**
- * Generate photos through existing relay APIs:
- * - Gemini: /pg/chat/completions (session auth, same as Playground)
- * - OpenAI image models: /pg/images/generations or /pg/images/edits (session auth)
+ * Generate photos through the API that matches the model's endpoint type:
+ * `/pg/images/generations` (or edits) for `image-generation`, and
+ * `/pg/chat/completions` for Gemini native image models.
  */
 export async function generatePhoto(
   params: PhotoParams
 ): Promise<GeneratePhotoResponse> {
-  const model = PHOTO_MODELS.find((m) => m.id === params.model) as PhotoModel
-
-  if (isGeminiImage(params.model)) {
-    return generateViaChatCompletions(params)
+  const callKind = resolvePhotoCallKind(params.model, params.endpointTypes)
+  if (callKind === 'gemini-chat') {
+    return generateViaGeminiChat(params)
   }
-
-  return generateViaImagesApi(params, model)
+  return generateViaImagesApi(params)
 }
 
 function getImageInputUrls(params: PhotoParams): string[] {
@@ -89,24 +85,21 @@ function parseOpenAIImageList(data: unknown): PhotoResult[] {
 }
 
 async function generateViaImagesApi(
-  params: PhotoParams,
-  model: PhotoModel
+  params: PhotoParams
 ): Promise<GeneratePhotoResponse> {
   const imageInputUrls = getImageInputUrls(params)
   const isImageToImage = imageInputUrls.length > 0
+  const size = resolvePhotoSize(params.imageSize, params.aspectRatio, {
+    width: params.customWidth,
+    height: params.customHeight,
+  })
 
   const payload: Record<string, unknown> = {
     model: params.model,
     prompt: params.prompt,
     n: clampCount(params.n),
+    size,
     response_format: 'b64_json',
-  }
-
-  if (model.supportsSize && params.size && params.size !== 'auto') {
-    payload.size = params.size
-  }
-  if (model.supportsQuality && params.quality) {
-    payload.quality = params.quality
   }
 
   if (isImageToImage) {
@@ -138,35 +131,101 @@ async function generateViaImagesApi(
   return { images }
 }
 
-async function generateViaChatCompletions(
+function geminiImageSize(params: PhotoParams): string {
+  const raw = String(params.imageSize || params.resolution || '').trim()
+  if (raw === '1K' || raw === '2K' || raw === '4K') return raw
+  return '2K'
+}
+
+function pushImageFromUrl(images: PhotoResult[], raw?: string) {
+  const url = raw?.trim()
+  if (!url) return
+  if (url.startsWith('data:')) {
+    const comma = url.indexOf(',')
+    images.push({
+      b64: comma >= 0 ? url.slice(comma + 1) : url,
+      mimeType: url.slice(5, url.indexOf(';')) || 'image/png',
+    })
+    return
+  }
+  images.push({ url })
+}
+
+function collectImagesFromContent(content: unknown, images: PhotoResult[]) {
+  if (typeof content === 'string') {
+    for (const match of content.matchAll(
+      /(?:!\[[^\]]*]\()?((?:data:image\/[a-zA-Z0-9.+-]+;base64,[A-Za-z0-9+/=\s]+)|https?:\/\/[^\s)]+)/g
+    )) {
+      pushImageFromUrl(images, match[1])
+    }
+    return
+  }
+  if (!Array.isArray(content)) return
+  for (const part of content) {
+    if (!part || typeof part !== 'object') continue
+    const item = part as {
+      type?: string
+      image_url?: { url?: string } | string
+      inline_data?: { data?: string; mime_type?: string }
+      inlineData?: { data?: string; mimeType?: string }
+    }
+    if (item.type === 'image_url') {
+      const url =
+        typeof item.image_url === 'string' ? item.image_url : item.image_url?.url
+      pushImageFromUrl(images, url)
+    }
+    const inline = item.inlineData ?? item.inline_data
+    if (inline?.data) {
+      let mimeType = 'image/png'
+      if ('mimeType' in inline && inline.mimeType) {
+        mimeType = inline.mimeType
+      } else if ('mime_type' in inline && inline.mime_type) {
+        mimeType = inline.mime_type
+      }
+      images.push({
+        b64: inline.data,
+        mimeType,
+      })
+    }
+  }
+}
+
+function parseChatImages(data: unknown): PhotoResult[] {
+  const fromList = parseOpenAIImageList(data)
+  if (fromList.length > 0) return fromList
+
+  const images: PhotoResult[] = []
+  const choices = (data as { choices?: unknown[] })?.choices ?? []
+  for (const choice of choices) {
+    if (!choice || typeof choice !== 'object') continue
+    const message = (choice as { message?: Record<string, unknown> }).message
+    if (!message) continue
+    collectImagesFromContent(message.content, images)
+    collectImagesFromContent(message.images, images)
+  }
+  return images
+}
+
+async function generateViaGeminiChat(
   params: PhotoParams
 ): Promise<GeneratePhotoResponse> {
-  const content: Array<
-    | { type: 'text'; text: string }
-    | { type: 'image_url'; image_url: { url: string } }
-  > = []
-
   const imageInputUrls = getImageInputUrls(params)
+  const content: Array<Record<string, unknown>> = [
+    { type: 'text', text: params.prompt },
+  ]
   for (const url of imageInputUrls) {
     content.push({ type: 'image_url', image_url: { url } })
   }
 
-  content.push({ type: 'text', text: params.prompt })
-
   const payload = {
     model: params.model,
     stream: false,
-    messages: [
-      {
-        role: 'user' as const,
-        content,
-      },
-    ],
+    messages: [{ role: 'user', content }],
     extra_body: {
       google: {
         image_config: {
           aspect_ratio: params.aspectRatio,
-          image_size: params.imageSize,
+          image_size: geminiImageSize(params),
         },
       },
     },
@@ -181,65 +240,15 @@ async function generateViaChatCompletions(
     throw new Error(errorMessage)
   }
 
-  const images = parseGeminiImages(res.data)
+  const images = parseChatImages(res.data)
   if (images.length === 0) {
     throw new Error(
-      'The model returned no images. Try adjusting the prompt or image size.'
+      t(
+        'The Gemini image model did not return an image. Confirm the channel supports this model, then try again.'
+      )
     )
   }
-
   return { images }
-}
-
-function parseGeminiImages(data: unknown): PhotoResult[] {
-  const message = (data as { choices?: Array<{ message?: { content?: unknown } }> })
-    ?.choices?.[0]?.message
-  const content = message?.content
-  const images: PhotoResult[] = []
-
-  if (Array.isArray(content)) {
-    for (const part of content) {
-      if (!part || typeof part !== 'object') continue
-      const record = part as {
-        type?: string
-        image_url?: { url?: string }
-        inline_data?: { mime_type?: string; data?: string }
-      }
-      const imageUrl = record.image_url?.url
-      if (typeof imageUrl === 'string') {
-        images.push(
-          imageUrl.startsWith('data:') ? parseDataUrl(imageUrl) : { url: imageUrl }
-        )
-        continue
-      }
-      if (record.inline_data?.data) {
-        images.push({
-          mimeType: record.inline_data.mime_type ?? 'image/png',
-          b64: record.inline_data.data,
-        })
-      }
-    }
-    return images
-  }
-
-  if (typeof content === 'string') {
-    const matches = content.match(/!\[[^\]]*\]\(([^)]+)\)/g) ?? []
-    for (const match of matches) {
-      const url = match.replace(/^!\[[^\]]*\]\(/, '').replace(/\)$/, '')
-      images.push(url.startsWith('data:') ? parseDataUrl(url) : { url })
-    }
-  }
-
-  return images
-}
-
-function parseDataUrl(dataUrl: string): PhotoResult {
-  const match = /^data:([^;]+);base64,(.*)$/.exec(dataUrl)
-  if (!match) return { url: dataUrl }
-  return {
-    mimeType: match[1],
-    b64: match[2],
-  }
 }
 
 function clampCount(n: number | '' | undefined): number {

@@ -347,6 +347,7 @@ func SetApiRouter(router *gin.Engine) {
 		taskRoute := apiRouter.Group("/task")
 		{
 			taskRoute.GET("/self", middleware.UserAuth(), controller.GetUserTask)
+			taskRoute.DELETE("/self/:task_id", middleware.UserAuth(), controller.DeleteUserTask)
 			taskRoute.GET("/", middleware.AdminAuth(), controller.GetAllTask)
 		}
 

@@ -602,6 +602,7 @@ func RelayTask(c *gin.Context) {
 		task.Quota = result.Quota
 		task.Data = result.TaskData
 		task.Action = relayInfo.Action
+		attachTaskPrompt(c, task)
 		if insertErr := task.Insert(); insertErr != nil {
 			common.SysError("insert task error: " + insertErr.Error())
 		}
@@ -618,6 +619,17 @@ func respondTaskError(c *gin.Context, taskErr *taskdto.TaskError) {
 		taskErr.Message = "当前分组上游负载已饱和，请稍后再试"
 	}
 	c.JSON(taskErr.StatusCode, taskErr)
+}
+
+func attachTaskPrompt(c *gin.Context, task *model.Task) {
+	if task == nil {
+		return
+	}
+	var raw map[string]any
+	if err := common.UnmarshalBodyReusable(c, &raw); err != nil {
+		return
+	}
+	task.Properties.Input = model.TaskPromptFromRequest(raw)
 }
 
 func shouldRetryTaskRelay(c *gin.Context, channelId int, taskErr *taskdto.TaskError, retryTimes int) bool {

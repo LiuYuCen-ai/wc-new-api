@@ -26,6 +26,7 @@ import {
   isPhotoHistoryImageUrl,
 } from '../lib/photo-history-image'
 import { getPhotoResultSrc } from '../lib/photo-utils'
+import { mediaAspectRatioCss } from '../lib/works-masonry'
 import type { PhotoResult } from '../types'
 
 interface PhotoHistoryThumbnailProps {
@@ -33,7 +34,9 @@ interface PhotoHistoryThumbnailProps {
   alt: string
   ariaLabel: string
   className?: string
+  aspectRatio?: string
   onClick: (src: string) => void
+  onAspectMeasured?: (ratio: string) => void
   overlay?: ReactNode
 }
 
@@ -79,26 +82,25 @@ export function PhotoHistoryThumbnail(props: PhotoHistoryThumbnailProps) {
     props.image.mimeType,
   ])
 
+  const frameClass = cn(
+    'bg-muted group relative overflow-hidden rounded-lg ring-1 ring-foreground/10',
+    props.aspectRatio ? null : 'aspect-square',
+    props.className
+  )
+  const frameStyle = props.aspectRatio
+    ? { aspectRatio: mediaAspectRatioCss(props.aspectRatio, { w: 1, h: 1 }) }
+    : undefined
+
   if (loading || !src) {
     return (
-      <div
-        className={cn(
-          'bg-muted aspect-square overflow-hidden rounded-lg ring-1 ring-foreground/10',
-          props.className
-        )}
-      >
+      <div className={frameClass} style={frameStyle}>
         <Skeleton className='h-full w-full rounded-none' />
       </div>
     )
   }
 
   return (
-    <div
-      className={cn(
-        'bg-muted group relative aspect-square overflow-hidden rounded-lg ring-1 ring-foreground/10',
-        props.className
-      )}
-    >
+    <div className={frameClass} style={frameStyle}>
       <button
         type='button'
         onMouseDown={(event) => {
@@ -114,6 +116,13 @@ export function PhotoHistoryThumbnail(props: PhotoHistoryThumbnailProps) {
           alt={props.alt}
           loading='lazy'
           decoding='async'
+          onLoad={(event) => {
+            const image = event.currentTarget
+            if (!image.naturalWidth || !image.naturalHeight) return
+            props.onAspectMeasured?.(
+              `${image.naturalWidth} / ${image.naturalHeight}`
+            )
+          }}
           className='h-full w-full object-cover transition-transform duration-200 group-hover:scale-[1.03]'
         />
       </button>

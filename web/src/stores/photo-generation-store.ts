@@ -42,6 +42,7 @@ import {
 } from '@/features/photo/lib/photo-history-storage'
 import {
   getPhotoResultSrc,
+  isUpstreamSensitiveError,
   pickGenerationSnapshot,
 } from '@/features/photo/lib/photo-utils'
 import type { PhotoGenerationSnapshot, PhotoParams, PhotoResult } from '@/features/photo/types'
@@ -81,6 +82,7 @@ type PhotoGenerationStore = {
     updater: (current: PhotoPreviewState | null) => PhotoPreviewState | null
   ) => void
   loadHistory: (userId: number) => Promise<void>
+  removeHistoryItem: (historyId: string) => void
   recoverGenerations: (userId: number) => Promise<void>
   runFormGeneration: (params: PhotoParams, userId: number) => Promise<void>
   runPreviewGeneration: (input: {
@@ -110,14 +112,21 @@ function extractGenerationError(err: unknown) {
     return t('Session expired!')
   }
 
-  return (
+  const message =
     (err as { response?: { data?: { error?: { message?: string } } } })
       ?.response?.data?.error?.message ??
     (err as { response?: { data?: { message?: string } } })?.response?.data
       ?.message ??
     (err as Error).message ??
     t('Generation failed')
-  )
+
+  if (isUpstreamSensitiveError(message)) {
+    return t(
+      'The model blocked this prompt as sensitive. Remove celebrity names, brands, IP, and prohibited descriptions, then try again.'
+    )
+  }
+
+  return message
 }
 
 function isUnauthorizedError(err: unknown) {
@@ -405,6 +414,14 @@ export const usePhotoGenerationStore = create<PhotoGenerationStore>()((set, get)
         set({ historyLoading: false })
       }
     }
+  },
+
+  removeHistoryItem: (historyId) => {
+    set((state) => ({
+      history: state.history.filter((item) => item.id !== historyId),
+      preview:
+        state.preview?.historyItemId === historyId ? null : state.preview,
+    }))
   },
 
   recoverGenerations: async (userId) => {

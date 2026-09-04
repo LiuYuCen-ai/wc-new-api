@@ -55,7 +55,7 @@ type PhotoHistoryDTO = {
 
 type ApiListResponse = {
   success: boolean
-  data?: PhotoHistoryDTO[]
+  data?: PhotoHistoryDTO[] | { items?: PhotoHistoryDTO[] }
   message?: string
 }
 
@@ -100,21 +100,31 @@ function toImagePayload(image: PhotoResult) {
   }
 }
 
-export async function fetchPhotoHistory(
+function unwrapPhotoHistoryList(data: ApiListResponse['data']): PhotoHistoryDTO[] {
+  if (Array.isArray(data)) return data
+  if (data && Array.isArray(data.items)) return data.items
+  return []
+}
+
+export async function fetchPhotoHistoryResult(
   limit = 50
-): Promise<PhotoHistoryItem[]> {
+): Promise<PhotoHistoryItem[] | null> {
   try {
     const res = await api.get<ApiListResponse>(`${PHOTO_HISTORY_API_BASE}/history`, {
       params: { limit },
       skipErrorHandler: true,
     })
-    if (!res.data?.success || !Array.isArray(res.data.data)) {
-      return []
-    }
-    return res.data.data.map(toPhotoHistoryItem)
+    if (!res.data?.success) return null
+    return unwrapPhotoHistoryList(res.data.data).map(toPhotoHistoryItem)
   } catch {
-    return []
+    return null
   }
+}
+
+export async function fetchPhotoHistory(
+  limit = 50
+): Promise<PhotoHistoryItem[]> {
+  return (await fetchPhotoHistoryResult(limit)) ?? []
 }
 
 export async function createPendingPhotoHistoryItem(input: {
@@ -199,10 +209,13 @@ export async function deletePhotoHistoryItem(historyId: string): Promise<boolean
   try {
     const res = await api.delete<{ success: boolean; message?: string }>(
       `${PHOTO_HISTORY_API_BASE}/history/${historyId}`,
-      { skipErrorHandler: true }
+      { skipErrorHandler: true, skipBusinessError: true }
     )
-    return Boolean(res.data?.success)
-  } catch {
-    return false
+    if (res.data?.success) return true
+    const message = (res.data?.message || '').toLowerCase()
+    return message.includes('not found')
+  } catch (err) {
+    const status = (err as { response?: { status?: number } })?.response?.status
+    return status === 404
   }
 }

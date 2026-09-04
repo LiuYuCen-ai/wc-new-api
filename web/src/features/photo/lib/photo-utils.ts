@@ -16,6 +16,13 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
+import {
+  clampSeedreamCustomSize,
+  isSeedreamAspectRatio,
+  parseAspectRatioParts,
+  parsePixelSize,
+  resolvePhotoSize,
+} from '../constants'
 import type { PhotoGenerationSnapshot, PhotoParams } from '../types'
 
 const photoResultSrcCache = new Map<string, string>()
@@ -26,9 +33,88 @@ export function pickGenerationSnapshot(
   return {
     size: params.size,
     resolution: params.resolution,
-    quality: params.quality,
     aspectRatio: params.aspectRatio,
     imageSize: params.imageSize,
+    customWidth: params.customWidth,
+    customHeight: params.customHeight,
+  }
+}
+
+export function applyPhotoGeometry(
+  params: PhotoParams,
+  patch: Partial<PhotoParams>
+): PhotoParams {
+  const requestedSize = String(
+    patch.imageSize ?? patch.resolution ?? params.imageSize ?? ''
+  ).trim()
+  const imageSize = requestedSize || params.imageSize
+  const requestedRatio = patch.aspectRatio ?? params.aspectRatio
+  const aspectRatio = isSeedreamAspectRatio(requestedRatio)
+    ? requestedRatio
+    : params.aspectRatio
+
+  if (imageSize !== 'custom') {
+    return {
+      ...params,
+      ...patch,
+      imageSize,
+      resolution: imageSize,
+      aspectRatio,
+      customWidth: params.customWidth ?? 2048,
+      customHeight: params.customHeight ?? 2048,
+      size: resolvePhotoSize(imageSize, aspectRatio, {
+        width: params.customWidth,
+        height: params.customHeight,
+      }),
+    }
+  }
+
+  const switchingToCustom = params.imageSize !== 'custom'
+  const presetPixels = parsePixelSize(params.size)
+  let customWidth = patch.customWidth ?? params.customWidth ?? 2048
+  let customHeight = patch.customHeight ?? params.customHeight ?? 2048
+
+  if (switchingToCustom && presetPixels) {
+    customWidth = patch.customWidth ?? presetPixels.width
+    customHeight = patch.customHeight ?? presetPixels.height
+  } else if (
+    patch.aspectRatio &&
+    patch.customWidth === undefined &&
+    patch.customHeight === undefined
+  ) {
+    const { w, h } = parseAspectRatioParts(aspectRatio)
+    const longEdge = Math.max(customWidth || 2048, customHeight || 2048)
+    if (w >= h) {
+      customWidth = longEdge
+      customHeight = (longEdge * h) / w
+    } else {
+      customHeight = longEdge
+      customWidth = (longEdge * w) / h
+    }
+  } else if (
+    patch.customWidth !== undefined &&
+    patch.customHeight === undefined
+  ) {
+    const { w, h } = parseAspectRatioParts(aspectRatio)
+    customHeight = (patch.customWidth * h) / w
+  } else if (
+    patch.customHeight !== undefined &&
+    patch.customWidth === undefined
+  ) {
+    const { w, h } = parseAspectRatioParts(aspectRatio)
+    customWidth = (patch.customHeight * w) / h
+  }
+
+  const clamped = clampSeedreamCustomSize(customWidth, customHeight)
+  return {
+    ...params,
+    ...patch,
+    imageSize: 'custom',
+    resolution: 'custom',
+    aspectRatio,
+    customWidth: clamped.width,
+    customHeight: clamped.height,
+    size: `${clamped.width}x${clamped.height}`,
   }
 }
 
@@ -72,6 +158,18 @@ export function getPhotoResultSrc(image: {
     photoResultSrcCache.set(cacheKey, dataUrl)
   }
   return dataUrl
+}
+
+export function isUpstreamSensitiveError(message: string): boolean {
+  const lower = message.toLowerCase()
+  return (
+    lower.includes('new_sensitive') ||
+    lower.includes('text sensitive') ||
+    lower.includes('image sensitive') ||
+    lower.includes('sensitive information') ||
+    lower.includes('inputtextsensitive') ||
+    lower.includes('outputimagesensitive')
+  )
 }
 
 export function rememberPhotoResultSrc(

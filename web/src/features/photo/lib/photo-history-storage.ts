@@ -18,20 +18,27 @@ For commercial licensing, please contact support@quantumnous.com
 */
 import { api } from '@/lib/api'
 import { useAuthStore } from '@/stores/auth-store'
-import type { PhotoGenerationSnapshot } from '../types'
-import type { PhotoResult } from '../types'
+import type { PhotoGenerationSnapshot, PhotoResult } from '../types'
 import {
   appendPhotoHistoryImages as appendPhotoHistoryImagesApi,
   createPhotoHistoryItem,
   fetchPhotoHistory,
+  fetchPhotoHistoryResult,
   type PhotoHistoryItem,
 } from './photo-history-api'
+import {
+  excludeHiddenPhotoHistory,
+  uniqueHiddenIds,
+} from './photo-history-hidden'
 
 export type { PhotoHistoryItem }
 
 const LEGACY_PHOTO_HISTORY_KEY = 'photo_history'
 const PHOTO_HISTORY_MIGRATION_KEY = 'photo_history_migrated_v2'
+const PHOTO_HISTORY_CACHE_KEY = 'photo_history_cache_v1'
+const PHOTO_HISTORY_REMOVED_KEY = 'photo_history_removed_v1'
 const PHOTO_HISTORY_LIMIT = 50
+const PHOTO_HISTORY_REMOVED_LIMIT = 200
 
 type LegacyHistoryItem = {
   id: string
@@ -44,6 +51,84 @@ type LegacyHistoryItem = {
 
 function getPhotoHistoryStorageKey(userId: number) {
   return `${LEGACY_PHOTO_HISTORY_KEY}_${userId}`
+}
+
+function getPhotoHistoryCacheKey(userId: number) {
+  return `${PHOTO_HISTORY_CACHE_KEY}_${userId}`
+}
+
+function getPhotoHistoryRemovedKey(userId: number) {
+  return `${PHOTO_HISTORY_REMOVED_KEY}_${userId}`
+}
+
+function readRemovedPhotoHistoryIds(userId: number): string[] {
+  if (typeof window === 'undefined') return []
+  try {
+    const raw = window.localStorage.getItem(getPhotoHistoryRemovedKey(userId))
+    if (!raw) return []
+    const parsed = JSON.parse(raw) as unknown
+    if (!Array.isArray(parsed)) return []
+    return parsed.filter((id): id is string => typeof id === 'string' && id.trim() !== '')
+  } catch {
+    return []
+  }
+}
+
+function writeRemovedPhotoHistoryIds(userId: number, ids: string[]) {
+  if (typeof window === 'undefined') return
+  try {
+    window.localStorage.setItem(
+      getPhotoHistoryRemovedKey(userId),
+      JSON.stringify(ids)
+    )
+  } catch {
+    // Quota or private mode; keep going with in-memory history.
+  }
+}
+
+function persistPhotoHistory(
+  userId: number,
+  items: PhotoHistoryItem[]
+): PhotoHistoryItem[] {
+  const filtered = excludeHiddenPhotoHistory(
+    items,
+    readRemovedPhotoHistoryIds(userId)
+  )
+  writeCachedPhotoHistory(userId, filtered)
+  return filtered
+}
+
+export function markPhotoHistoryItemRemoved(userId: number, historyId: string) {
+  const next = uniqueHiddenIds(
+    [...readRemovedPhotoHistoryIds(userId), historyId],
+    PHOTO_HISTORY_REMOVED_LIMIT
+  )
+  writeRemovedPhotoHistoryIds(userId, next)
+  persistPhotoHistory(userId, readCachedPhotoHistory(userId))
+}
+
+function readCachedPhotoHistory(userId: number): PhotoHistoryItem[] {
+  if (typeof window === 'undefined') return []
+  try {
+    const raw = window.localStorage.getItem(getPhotoHistoryCacheKey(userId))
+    if (!raw) return []
+    const parsed = JSON.parse(raw) as unknown
+    return Array.isArray(parsed) ? (parsed as PhotoHistoryItem[]) : []
+  } catch {
+    return []
+  }
+}
+
+function writeCachedPhotoHistory(userId: number, items: PhotoHistoryItem[]) {
+  if (typeof window === 'undefined') return
+  try {
+    window.localStorage.setItem(
+      getPhotoHistoryCacheKey(userId),
+      JSON.stringify(items.slice(0, PHOTO_HISTORY_LIMIT))
+    )
+  } catch {
+    // Quota or private mode; keep going with in-memory history.
+  }
 }
 
 function parseLegacyHistory(raw: string | null): LegacyHistoryItem[] {
@@ -164,10 +249,22 @@ export async function loadPhotoHistoryForUser(
   if (resolvedUserId == null) return []
 
   const hasSession = await ensureActiveSession()
-  if (!hasSession) return []
+  if (!hasSession) {
+    return persistPhotoHistory(
+      resolvedUserId,
+      readCachedPhotoHistory(resolvedUserId)
+    )
+  }
 
   await migrateLegacyPhotoHistory(resolvedUserId)
-  return fetchPhotoHistory(PHOTO_HISTORY_LIMIT)
+  const remote = await fetchPhotoHistoryResult(PHOTO_HISTORY_LIMIT)
+  if (remote) {
+    return persistPhotoHistory(resolvedUserId, remote)
+  }
+  return persistPhotoHistory(
+    resolvedUserId,
+    readCachedPhotoHistory(resolvedUserId)
+  )
 }
 
 export async function savePhotoHistoryItem(
@@ -183,10 +280,14 @@ export async function savePhotoHistoryItem(
   if (!created) return null
 
   const history = await fetchPhotoHistory(PHOTO_HISTORY_LIMIT)
+  const resolvedUserId = resolvePhotoHistoryUserId()
   if (history.some((item) => item.id === created.id)) {
+    if (resolvedUserId != null) return persistPhotoHistory(resolvedUserId, history)
     return history
   }
-  return [created, ...history].slice(0, PHOTO_HISTORY_LIMIT)
+  const next = [created, ...history].slice(0, PHOTO_HISTORY_LIMIT)
+  if (resolvedUserId != null) return persistPhotoHistory(resolvedUserId, next)
+  return next
 }
 
 export async function savePhotoHistoryImages(
@@ -196,5 +297,8 @@ export async function savePhotoHistoryImages(
 ): Promise<PhotoHistoryItem[] | null> {
   const updated = await appendPhotoHistoryImagesApi(historyItemId, images, prompt)
   if (!updated) return null
-  return fetchPhotoHistory(PHOTO_HISTORY_LIMIT)
+  const history = await fetchPhotoHistory(PHOTO_HISTORY_LIMIT)
+  const resolvedUserId = resolvePhotoHistoryUserId()
+  if (resolvedUserId != null) return persistPhotoHistory(resolvedUserId, history)
+  return history
 }

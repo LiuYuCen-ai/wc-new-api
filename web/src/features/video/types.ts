@@ -21,8 +21,9 @@ export type VideoParams = {
   prompt: string
   duration: string
   aspectRatio: '16:9' | '9:16' | '1:1'
-  resolution: '720P' | '1080P'
+  resolution: string
   referenceImageUrl?: string
+  endpointTypes?: string[]
 }
 
 export type VideoTaskStatus =
@@ -43,6 +44,8 @@ export type VideoGenerationResult = {
 export type VideoHistoryItem = {
   id: string
   requestId: string
+  recordId?: string
+  deleteIds?: string[]
   status: VideoTaskStatus
   url?: string
   error?: string
@@ -50,7 +53,7 @@ export type VideoHistoryItem = {
   model: string
   duration: string
   aspectRatio: '16:9' | '9:16' | '1:1'
-  resolution: '720P' | '1080P'
+  resolution: string
   referenceImageUrl?: string
   createdAt: number
 }

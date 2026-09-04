@@ -266,7 +266,7 @@ export function HeaderNavigationSection({
       requireAuthDependsOn: 'photoEnabled',
       title: t('Experience Hub'),
       description: t(
-        'Unified image generation playground for Gemini, GPT Image, and more.'
+        'Image and video playground with Seedream and Seedance models.'
       ),
       requireAuthTitle: t('Require login to view Experience Hub'),
       requireAuthDescription: t(

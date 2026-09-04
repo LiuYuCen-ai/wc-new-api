@@ -1,6 +1,8 @@
 package controller
 
 import (
+	"errors"
+	"net/url"
 	"strconv"
 
 	"github.com/QuantumNous/new-api/common"
@@ -11,6 +13,7 @@ import (
 	"github.com/QuantumNous/new-api/types"
 
 	"github.com/gin-gonic/gin"
+	"gorm.io/gorm"
 )
 
 func GetAllTask(c *gin.Context) {
@@ -58,6 +61,24 @@ func GetUserTask(c *gin.Context) {
 	pageInfo.SetTotal(int(total))
 	pageInfo.SetItems(tasksToDto(items, false))
 	common.ApiSuccess(c, pageInfo)
+}
+
+func DeleteUserTask(c *gin.Context) {
+	userId := c.GetInt("id")
+	taskId := c.Param("task_id")
+	if decoded, err := url.PathUnescape(taskId); err == nil {
+		taskId = decoded
+	}
+	err := model.DeleteUserTask(userId, taskId)
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			common.ApiErrorMsg(c, "task not found")
+			return
+		}
+		common.ApiError(c, err)
+		return
+	}
+	common.ApiSuccess(c, nil)
 }
 
 func tasksToDto(tasks []*model.Task, fillUser bool) []*dto.TaskDto {

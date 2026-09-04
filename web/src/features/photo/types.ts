@@ -20,19 +20,7 @@ export type PhotoModel = {
   id: string
   label: string
   description?: string
-  // OpenAI images API
-  sizes?: string[]
-  // Gemini image_config
-  aspectRatios?: string[]
-  imageSizes?: string[]
-  // Whether the model supports n (count)
-  supportsN?: boolean
-  // Whether the model supports resolution (size)
-  supportsSize?: boolean
-  // Whether the model supports the "quality" option (OpenAI image models)
-  supportsQuality?: boolean
-  // Restrict the list of allowed qualities; defaults to low/medium/high
-  qualities?: PhotoQuality[]
+  endpointTypes?: string[]
 }
 
 export type PhotoAspectRatio =
@@ -43,41 +31,28 @@ export type PhotoAspectRatio =
   | '3:4'
   | '3:2'
   | '2:3'
-  | '4:5'
-  | '5:4'
   | '21:9'
-  | '4:1'
-  | '1:4'
-  | '8:1'
-  | '1:8'
 
-// Official GPT-Image-2 resolutions (per the public docs)
-export type PhotoResolution =
-  | '1024x1024'
-  | '1024x1536'
-  | '1536x1024'
-  | '2048x2048'
-  | '2048x1152'
-  | '3840x2160'
-  | '2160x3840'
-  | 'auto'
+export type PhotoImageSize = string
 
-// OpenAI image quality levels
-export type PhotoQuality = 'low' | 'medium' | 'high' | 'auto'
-
-export type PhotoImageSize = '0.5K' | '1K' | '2K' | '4K'
+export type PhotoSizeOption = {
+  value: string
+  hint: string
+}
 
 export type PhotoParams = {
   model: string
   prompt: string
   n: number | ''
-  size: PhotoResolution
-  resolution: '1K' | '2K' | '4K'
-  quality: PhotoQuality
+  size: string
+  resolution: PhotoImageSize
   aspectRatio: PhotoAspectRatio
   imageSize: PhotoImageSize
+  customWidth: number
+  customHeight: number
   imageUrlEnabled: boolean
   imageDataUrls: { name: string; dataUrl: string }[]
+  endpointTypes?: string[]
 }
 
 export type PhotoResult = {
@@ -90,5 +65,10 @@ export type PhotoResult = {
 
 export type PhotoGenerationSnapshot = Pick<
   PhotoParams,
-  'size' | 'resolution' | 'quality' | 'aspectRatio' | 'imageSize'
+  | 'size'
+  | 'resolution'
+  | 'aspectRatio'
+  | 'imageSize'
+  | 'customWidth'
+  | 'customHeight'
 >

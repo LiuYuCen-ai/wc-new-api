@@ -16,64 +16,67 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import { type FormEvent, useState } from 'react'
+import { type FormEvent, useEffect, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
 import {
-  Download,
-  Film,
-  History,
-  ImagePlus,
+  ArrowUp,
+  ChevronDown,
   Loader2,
-  Sparkles,
-  Trash2,
-  Wand2,
+  Plus,
 } from 'lucide-react'
 
 import { Button } from '@/components/ui/button'
-import { Card, CardContent } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-import { Switch } from '@/components/ui/switch'
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from '@/components/ui/popover'
 import { Textarea } from '@/components/ui/textarea'
 import { cn } from '@/lib/utils'
 
-import { generateVideo } from '@/features/video/api'
+import {
+  defaultVideoDuration,
+  snapVideoResolution,
+} from '@/features/video/lib/video-request'
 import type {
   VideoHistoryItem,
   VideoParams,
-  VideoTaskStatus,
 } from '@/features/video/types'
-
-const PRESET_VIDEO_MODELS = [
-  'grok-imagine-1.0-video',
-  'grok-imagine-video-1.5-preview',
-] as const
+import { useAuthStore } from '@/stores/auth-store'
+import { useVideoGenerationStore } from '@/stores/video-generation-store'
+import { useUserDisplay } from '@/hooks/use-user-display'
+import { usePhotoModels } from '../hooks/use-photo-models'
+import { snapPhotoSize } from '../lib/photo-models'
+import { masonryItemWeight } from '../lib/works-masonry'
+import {
+  composerChipClass,
+  ComposerModelList,
+  ComposerOption,
+  ComposerSelect,
+} from './composer-select'
+import { VideoNoteViewer } from './video-note-viewer'
+import { VideoWorksCard } from './video-works-card'
+import { WorksMasonry } from './works-masonry'
 
 const DEFAULT_PARAMS: VideoParams = {
-  model: PRESET_VIDEO_MODELS[0],
+  model: '',
   prompt: '',
   duration: '',
   aspectRatio: '16:9',
   resolution: '720P',
 }
 
-const VIDEO_HISTORY_KEY = 'quick-video-history'
-
-const VIDEO_STATUS_KEYS: Record<VideoTaskStatus, string> = {
-  queued: 'Queued',
-  processing: 'Processing',
-  running: 'Running',
-  done: 'Completed',
-  succeeded: 'Succeeded',
-  failed: 'Failed',
-}
-
-const videoOptionTileClass =
-  'flex min-w-0 w-full flex-col items-start gap-0.5 rounded-md border px-2.5 py-2 text-left transition-colors'
-const videoOptionHintClass = 'w-full break-words text-[11px] leading-snug'
-
 const MAX_VIDEO_DURATION = 15
+const DURATION_OPTIONS = ['6', '10', '15'] as const
+
+const VIDEO_PROMPT_SUGGESTIONS = [
+  'A paper boat floating down a rainy city street at night',
+  'A cheetah sprinting across the savanna at sunset',
+  'Lanterns rising into the night sky over an ancient town',
+] as const
 
 const ASPECT_RATIOS = [
   { value: '16:9', label: '16:9', hint: 'Landscape' },
@@ -81,39 +84,36 @@ const ASPECT_RATIOS = [
   { value: '1:1', label: '1:1', hint: 'Square' },
 ] as const
 
-const RESOLUTIONS = [
-  { value: '720P', label: '720P', hint: 'Balanced preview quality' },
-  { value: '1080P', label: '1080P', hint: 'Sharper output preview' },
-] as const
-
-function loadVideoHistory(): VideoHistoryItem[] {
-  if (typeof window === 'undefined') return []
-  try {
-    const raw = window.sessionStorage.getItem(VIDEO_HISTORY_KEY)
-    if (!raw) return []
-    const parsed = JSON.parse(raw) as unknown
-    return Array.isArray(parsed) ? (parsed as VideoHistoryItem[]) : []
-  } catch {
-    return []
-  }
-}
-
-function saveVideoHistory(history: VideoHistoryItem[]) {
-  if (typeof window === 'undefined') return
-  window.sessionStorage.setItem(VIDEO_HISTORY_KEY, JSON.stringify(history))
-}
-
 export function VideoPanel() {
   const { t } = useTranslation()
+  const user = useAuthStore((state) => state.auth.user)
+  const bootstrapState = useAuthStore((state) => state.auth.bootstrapState)
+  const author = useUserDisplay(user)
   const [params, setParams] = useState<VideoParams>(DEFAULT_PARAMS)
-  const [loading, setLoading] = useState(false)
-  const [status, setStatus] = useState<VideoTaskStatus | null>(null)
-  const [videoUrl, setVideoUrl] = useState<string | null>(null)
-  const [history, setHistory] = useState<VideoHistoryItem[]>(() =>
-    loadVideoHistory()
+  const history = useVideoGenerationStore((state) => state.history)
+  const historyLoading = useVideoGenerationStore((state) => state.historyLoading)
+  const pendingJob = useVideoGenerationStore((state) => state.pendingJob)
+  const viewerId = useVideoGenerationStore((state) => state.viewerId)
+  const loadHistory = useVideoGenerationStore((state) => state.loadHistory)
+  const resetForUser = useVideoGenerationStore((state) => state.resetForUser)
+  const startGeneration = useVideoGenerationStore((state) => state.startGeneration)
+  const deleteHistoryItem = useVideoGenerationStore(
+    (state) => state.deleteHistoryItem
   )
+  const setViewerId = useVideoGenerationStore((state) => state.setViewerId)
+  const loading = Boolean(pendingJob)
+  const [aspectById, setAspectById] = useState<Record<string, string>>({})
   const [referenceEnabled, setReferenceEnabled] = useState(false)
-  const [customModelEnabled, setCustomModelEnabled] = useState(false)
+  const {
+    models,
+    isLoading: modelsLoading,
+    addCustomModel,
+    getSizeOptions,
+  } = usePhotoModels('video')
+  const resolutionOptions = getSizeOptions(params.model)
+  const selectedModel =
+    models.find((model) => model.id === params.model) ??
+    (params.model ? { id: params.model, label: params.model } : null)
 
   const update = <K extends keyof VideoParams>(
     key: K,
@@ -122,16 +122,60 @@ export function VideoPanel() {
     setParams((prev) => ({ ...prev, [key]: value }))
   }
 
-  const handleReferenceToggle = (checked: boolean) => {
-    setReferenceEnabled(checked)
-    if (!checked) {
-      setParams((prev) => ({ ...prev, referenceImageUrl: undefined }))
+  useEffect(() => {
+    if (modelsLoading || models.length === 0) return
+    const current =
+      models.find((model) => model.id === params.model) ?? models[0]
+    const nextTypes = current.endpointTypes ?? []
+    const prevTypes = params.endpointTypes ?? []
+    if (
+      current.id === params.model &&
+      nextTypes.join(',') === prevTypes.join(',')
+    ) {
+      return
     }
+    setParams((prev) => ({
+      ...prev,
+      model: current.id,
+      endpointTypes: nextTypes,
+    }))
+  }, [models, modelsLoading, params.endpointTypes, params.model])
+
+  useEffect(() => {
+    if (!params.model) return
+    const next = snapPhotoSize(params.resolution, resolutionOptions)
+    if (next === params.resolution) return
+    update('resolution', next)
+  }, [params.model, params.resolution, resolutionOptions])
+
+  useEffect(() => {
+    if (bootstrapState !== 'complete') return
+    if (!user?.id) {
+      resetForUser()
+      return
+    }
+    void loadHistory(user.id)
+  }, [bootstrapState, loadHistory, resetForUser, user?.id])
+
+  const handleReferenceToggle = () => {
+    setReferenceEnabled((enabled) => {
+      const next = !enabled
+      if (!next) {
+        setParams((prev) => ({ ...prev, referenceImageUrl: undefined }))
+      }
+      return next
+    })
   }
 
   const handleSubmit = async (e?: FormEvent) => {
     e?.preventDefault()
     if (loading) return
+    if (!user?.id) {
+      toast.error(
+        t('Sign in to save and view your generation history.')
+      )
+      return
+    }
     if (!params.model.trim()) {
       toast.error(t('Please enter a model'))
       return
@@ -147,7 +191,7 @@ export function VideoPanel() {
     }
 
     const durationInput = params.duration.trim()
-    let duration = String(MAX_VIDEO_DURATION)
+    let duration = String(defaultVideoDuration(params.model))
     if (durationInput) {
       const parsed = Number(durationInput)
       if (
@@ -168,51 +212,17 @@ export function VideoPanel() {
     const requestParams: VideoParams = {
       ...params,
       duration,
+      resolution: snapVideoResolution(params.model, params.resolution),
       referenceImageUrl: referenceEnabled ? referenceImageUrl : undefined,
+      endpointTypes:
+        models.find((model) => model.id === params.model)?.endpointTypes ??
+        params.endpointTypes,
     }
 
-    setLoading(true)
-    setVideoUrl(null)
-    setStatus('queued')
-    try {
-      const { requestId, url } = await generateVideo(requestParams, (s) =>
-        setStatus(s)
-      )
-      const nextItem: VideoHistoryItem = {
-        id: `${requestId}-${Date.now()}`,
-        requestId,
-        status: 'done',
-        url,
-        prompt: params.prompt.trim(),
-        model: params.model.trim(),
-        duration: requestParams.duration,
-        aspectRatio: params.aspectRatio,
-        resolution: params.resolution,
-        referenceImageUrl: requestParams.referenceImageUrl,
-        createdAt: Date.now(),
-      }
-
-      setVideoUrl(url)
-      setStatus('done')
-      setHistory((prev) => {
-        const next = [nextItem, ...prev].slice(0, 12)
-        saveVideoHistory(next)
-        return next
-      })
-      toast.success(t('Video generated successfully'))
-    } catch (err) {
-      setStatus('failed')
-      const message =
-        err instanceof Error ? err.message : t('Video generation failed')
-      toast.error(message)
-    } finally {
-      setLoading(false)
-    }
+    await startGeneration(requestParams, user.id)
   }
 
-  const selectHistoryItem = (item: VideoHistoryItem) => {
-    setVideoUrl(item.url ?? null)
-    setStatus(item.status)
+  const applyHistoryItem = (item: VideoHistoryItem) => {
     setParams((prev) => ({
       ...prev,
       model: item.model,
@@ -223,347 +233,95 @@ export function VideoPanel() {
       referenceImageUrl: item.referenceImageUrl,
     }))
     setReferenceEnabled(item.referenceImageUrl ? true : false)
-    setCustomModelEnabled(
-      !PRESET_VIDEO_MODELS.includes(
-        item.model as (typeof PRESET_VIDEO_MODELS)[number]
-      )
-    )
+    if (!models.some((model) => model.id === item.model)) {
+      addCustomModel(item.model)
+    }
   }
 
-  const deleteHistoryItem = (id: string) => {
-    setHistory((prev) => {
-      const next = prev.filter((item) => item.id !== id)
-      saveVideoHistory(next)
-      return next
-    })
-  }
+  const galleryItems = useMemo((): VideoHistoryItem[] => {
+    if (!pendingJob) return history
+    return [
+      {
+        id: '__generating__',
+        requestId: '__generating__',
+        status: pendingJob.status,
+        prompt: pendingJob.params.prompt,
+        model: pendingJob.params.model,
+        duration:
+          pendingJob.params.duration ||
+          String(defaultVideoDuration(pendingJob.params.model)),
+        aspectRatio: pendingJob.params.aspectRatio,
+        resolution: pendingJob.params.resolution,
+        createdAt: pendingJob.startedAt,
+      },
+      ...history,
+    ]
+  }, [history, pendingJob])
+
+  const [durationMenuOpen, setDurationMenuOpen] = useState(false)
+  const durationUnit = t('{{value}}s', { value: '' }).trim()
+  const modelLabel =
+    selectedModel?.label || (modelsLoading ? t('Loading') : t('Model'))
 
   return (
-    <>
-      <div className='grid min-w-0 grid-cols-1 gap-6 lg:grid-cols-[minmax(0,380px)_minmax(0,1fr)]'>
-        {/* Left: parameters */}
-        <Card className='h-fit min-w-0 lg:sticky lg:top-24'>
-          <CardContent className='space-y-4 p-5'>
-            <div className='space-y-4' aria-label={t('Video generation parameters')}>
-              <div className='space-y-2'>
-                <Label>{t('Model')}</Label>
-                <div className='grid gap-2'>
-                  {PRESET_VIDEO_MODELS.map((model) => (
-                    <button
-                      key={model}
-                      type='button'
-                      onClick={() => {
-                        setCustomModelEnabled(false)
-                        update('model', model)
-                      }}
-                      className={cn(
-                        videoOptionTileClass,
-                        !customModelEnabled && params.model === model
-                          ? 'border-primary bg-primary/5'
-                          : 'hover:bg-muted/50'
-                      )}
-                    >
-                      <span className='w-full text-sm font-medium break-words'>
-                        {model}
-                      </span>
-                    </button>
-                  ))}
-                  <button
-                    type='button'
-                    onClick={() => {
-                      setCustomModelEnabled(true)
-                      if (
-                        PRESET_VIDEO_MODELS.includes(
-                          params.model as (typeof PRESET_VIDEO_MODELS)[number]
-                        )
-                      ) {
-                        update('model', '')
-                      }
-                    }}
-                    className={cn(
-                      videoOptionTileClass,
-                      customModelEnabled
-                        ? 'border-primary bg-primary/5'
-                        : 'hover:bg-muted/50'
-                    )}
-                  >
-                    <span className='text-sm font-medium'>
-                      {t('Custom model')}
-                    </span>
-                    <span
-                      className={cn(
-                        videoOptionHintClass,
-                        'text-muted-foreground'
-                      )}
-                    >
-                      {t('Enter a model configured by this site')}
-                    </span>
-                  </button>
-                </div>
-                {customModelEnabled && (
-                  <Input
-                    id='video-model'
-                    value={params.model}
-                    onChange={(e) => update('model', e.target.value)}
-                    placeholder={t('Enter video model name')}
-                  />
-                )}
-              </div>
-
-              <div className='space-y-2 rounded-lg border border-dashed p-3'>
-                <div className='flex flex-wrap items-center justify-between gap-2'>
-                  <div className='flex min-w-0 items-center gap-2 font-medium'>
-                    <ImagePlus className='h-4 w-4 shrink-0' />
-                    <span className='min-w-0 break-words'>
-                      {t('Reference image')}
-                    </span>
-                  </div>
-                  <Switch
-                    checked={referenceEnabled}
-                    onCheckedChange={handleReferenceToggle}
-                  />
-                </div>
-                {referenceEnabled && (
-                  <Input
-                    type='url'
-                    value={params.referenceImageUrl ?? ''}
-                    onChange={(e) => {
-                      const value = e.target.value
-                      update('referenceImageUrl', value || undefined)
-                      setReferenceEnabled(Boolean(value.trim()))
-                    }}
-                    placeholder='https://example.com/image.jpg'
-                  />
-                )}
-              </div>
-
-              <div className='space-y-2'>
-                <Label htmlFor='video-duration'>{t('Video duration')}</Label>
-                <Input
-                  id='video-duration'
-                  type='number'
-                  min={1}
-                  max={MAX_VIDEO_DURATION}
-                  value={params.duration}
-                  onChange={(e) => update('duration', e.target.value)}
-                  placeholder={t('Up to {{max}}s', {
-                    max: MAX_VIDEO_DURATION,
-                  })}
-                />
-              </div>
-
-              <div className='space-y-2'>
-                <Label>{t('Aspect ratio')}</Label>
-                <div className='grid grid-cols-1 gap-2 sm:grid-cols-3 lg:grid-cols-1'>
-                  {ASPECT_RATIOS.map((item) => {
-                    const isSelected = params.aspectRatio === item.value
-                    return (
-                      <button
-                        key={item.value}
-                        type='button'
-                        onClick={() => update('aspectRatio', item.value)}
-                        className={cn(
-                          videoOptionTileClass,
-                          isSelected
-                            ? 'border-primary bg-primary text-primary-foreground shadow-sm'
-                            : 'border-border bg-background text-foreground hover:bg-muted/60'
-                        )}
-                      >
-                        <span className='text-sm font-medium'>
-                          {item.label}
-                        </span>
-                        <span
-                          className={cn(
-                            videoOptionHintClass,
-                            isSelected
-                              ? 'text-primary-foreground/75'
-                              : 'text-muted-foreground'
-                          )}
-                        >
-                          {t(item.hint)}
-                        </span>
-                      </button>
-                    )
-                  })}
-                </div>
-              </div>
-
-              <div className='space-y-2'>
-                <Label>{t('Resolution')}</Label>
-                <div className='grid grid-cols-2 gap-2'>
-                  {RESOLUTIONS.map((item) => {
-                    const isSelected = params.resolution === item.value
-                    return (
-                      <button
-                        key={item.value}
-                        type='button'
-                        onClick={() => update('resolution', item.value)}
-                        className={cn(
-                          videoOptionTileClass,
-                          isSelected
-                            ? 'border-primary bg-primary text-primary-foreground shadow-sm'
-                            : 'border-border bg-background text-foreground hover:bg-muted/60'
-                        )}
-                      >
-                        <span className='text-sm font-medium'>
-                          {item.label}
-                        </span>
-                        <span
-                          className={cn(
-                            videoOptionHintClass,
-                            isSelected
-                              ? 'text-primary-foreground/75'
-                              : 'text-muted-foreground'
-                          )}
-                        >
-                          {t(item.hint)}
-                        </span>
-                      </button>
-                    )
-                  })}
-                </div>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-
-        {/* Right: preview + history */}
-        <div className='min-w-0 space-y-4'>
-          <Card className='min-w-0 overflow-hidden'>
-            <CardContent className='p-0'>
-              {videoUrl ? (
-                <div className='flex min-w-0 flex-col gap-3 p-4'>
-                  <video
-                    src={videoUrl}
-                    controls
-                    autoPlay
-                    loop
-                    className='max-h-[520px] w-full rounded-md bg-black'
-                  />
-                  <div className='flex items-center justify-end gap-2'>
-                    <Button
-                      variant='outline'
-                      size='sm'
-                      className='gap-2'
-                      render={
-                        <a
-                          href={videoUrl}
-                          download
-                          target='_blank'
-                          rel='noreferrer'
-                        />
-                      }
-                    >
-                      <Download className='h-4 w-4' />
-                      {t('Download')}
-                    </Button>
-                  </div>
-                </div>
-              ) : (
-                <div className='bg-muted/30 flex min-h-[520px] min-w-0 items-center justify-center p-6'>
-                  <div className='text-muted-foreground flex max-w-sm flex-col items-center gap-3 text-center'>
-                    <div className='bg-background flex h-16 w-16 items-center justify-center rounded-full border shadow-sm'>
-                      {loading ? (
-                        <Loader2 className='text-primary h-7 w-7 animate-spin' />
-                      ) : (
-                        <Sparkles className='text-primary h-7 w-7' />
-                      )}
-                    </div>
-                    <div className='space-y-1'>
-                      <p className='text-foreground text-sm font-medium'>
-                        {loading
-                          ? t('Generating your video, please wait...')
-                          : t('Your video preview will appear here')}
-                      </p>
-                      {loading && status && (
-                        <p className='text-xs leading-relaxed break-words'>
-                          {t('Status')}: {t(VIDEO_STATUS_KEYS[status])}
-                        </p>
-                      )}
-                    </div>
-                  </div>
-                </div>
-              )}
-            </CardContent>
-          </Card>
-
-          <Card className='min-w-0'>
-            <CardContent className='space-y-3 p-5'>
-              <div className='flex min-w-0 items-center gap-2'>
-                <History className='text-primary h-4 w-4 shrink-0' />
-                <h2 className='min-w-0 text-sm font-semibold break-words'>
-                  {t('History')}
-                </h2>
-              </div>
-              {history.length > 0 ? (
-                <div className='grid gap-3 sm:grid-cols-2 xl:grid-cols-3'>
-                  {history.map((item) => (
-                    <div
-                      key={item.id}
-                      className='group bg-background hover:border-primary hover:bg-muted/40 relative flex min-w-0 flex-col overflow-hidden rounded-md border text-left transition-colors'
-                    >
-                      <button
-                        type='button'
-                        onClick={() => selectHistoryItem(item)}
-                        className='flex min-w-0 flex-1 flex-col text-left'
-                      >
-                        {item.url ? (
-                          <video
-                            src={item.url}
-                            className='h-[160px] w-full bg-black object-cover'
-                            muted
-                            playsInline
-                          />
-                        ) : (
-                          <div className='bg-muted/20 flex h-[160px] w-full items-center justify-center'>
-                            <Sparkles className='text-muted-foreground h-6 w-6' />
-                          </div>
-                        )}
-                        <div className='w-full space-y-1 p-3'>
-                          <p className='truncate pr-7 text-sm font-medium'>
-                            {item.model || t('Not set')}
-                          </p>
-                          <p className='text-muted-foreground line-clamp-2 text-xs leading-relaxed'>
-                            {item.prompt}
-                          </p>
-                          <div className='text-muted-foreground flex items-center justify-between gap-2 text-[11px]'>
-                            <span>{item.duration}s</span>
-                            <span>{item.aspectRatio}</span>
-                            <span>{item.resolution}</span>
-                          </div>
-                        </div>
-                      </button>
-                      <Button
-                        type='button'
-                        variant='ghost'
-                        size='icon'
-                        className='text-muted-foreground hover:text-destructive absolute top-[168px] right-2 h-7 w-7'
-                        aria-label={t('Delete history')}
-                        onClick={() => deleteHistoryItem(item.id)}
-                      >
-                        <Trash2 className='h-4 w-4' />
-                      </Button>
-                    </div>
-                  ))}
-                </div>
-              ) : (
-                <div className='text-muted-foreground rounded-md border border-dashed p-6 text-sm'>
-                  {t('No history yet')}
-                </div>
-              )}
-            </CardContent>
-          </Card>
-        </div>
-      </div>
-
-      {/* Bottom prompt bar (fixed, chat-style) */}
-      <div className='pointer-events-none fixed inset-x-0 bottom-0 z-40'>
-        <div className='mx-auto w-full max-w-7xl px-4 pb-4 sm:px-6'>
-          <form
-            onSubmit={handleSubmit}
-            className='bg-background/95 pointer-events-auto flex flex-col gap-2 rounded-2xl border p-3 shadow-lg backdrop-blur supports-[backdrop-filter]:bg-background/80'
-            aria-label='video-prompt-bar'
+    <div className='min-w-0 space-y-10'>
+      <div className='mx-auto w-full max-w-3xl'>
+        <h1 className='mb-6 text-center text-2xl font-semibold tracking-tight sm:text-3xl'>
+          {t('Start creating with')}{' '}
+          <ComposerSelect
+            label={modelLabel}
+            ariaLabel={t('Model')}
+            contentClassName='w-80'
+            triggerClassName='inline-flex h-auto max-w-[min(100%,20rem)] items-baseline gap-1 rounded-none border-0 bg-transparent px-0 text-2xl font-semibold text-primary hover:bg-transparent sm:text-3xl [&_svg]:size-5'
           >
+            {(close) => (
+              <ComposerModelList
+                models={models}
+                selectedId={params.model}
+                loading={modelsLoading}
+                onSelect={(modelId) => {
+                  const selected = models.find((model) => model.id === modelId)
+                  setParams((prev) => ({
+                    ...prev,
+                    model: modelId,
+                    endpointTypes: selected?.endpointTypes ?? [],
+                  }))
+                  close()
+                }}
+                onAddCustom={(modelId) => {
+                  addCustomModel(modelId)
+                  setParams((prev) => ({
+                    ...prev,
+                    model: modelId,
+                    endpointTypes: [],
+                  }))
+                  close()
+                }}
+              />
+            )}
+          </ComposerSelect>
+        </h1>
+
+        <form
+          onSubmit={handleSubmit}
+          className='bg-muted/40 flex flex-col gap-3 rounded-[28px] border p-3 sm:p-4'
+          aria-label='video-prompt-bar'
+        >
+          <div className='flex items-start gap-2'>
+            <Button
+              type='button'
+              variant='outline'
+              size='icon'
+              className={cn(
+                'text-muted-foreground mt-0.5 size-11 shrink-0 rounded-2xl',
+                referenceEnabled && 'border-primary text-foreground'
+              )}
+              aria-label={t('Reference image')}
+              aria-pressed={referenceEnabled}
+              onClick={handleReferenceToggle}
+            >
+              <Plus className='size-5' />
+            </Button>
             <Label htmlFor='video-prompt' className='sr-only'>
               {t('Prompt')}
             </Label>
@@ -578,31 +336,275 @@ export function VideoPanel() {
                   void handleSubmit()
                 }
               }}
-              placeholder={t('Video prompt placeholder')}
-              className='max-h-48 min-h-20 flex-1 resize-none border-0 bg-transparent px-1 shadow-none focus-visible:ring-0'
+              placeholder={t('Describe your idea.')}
+              className='max-h-48 min-h-20 flex-1 resize-none border-0 bg-transparent px-1 py-2.5 shadow-none focus-visible:ring-0'
             />
-            <div className='flex items-center justify-between gap-2'>
-              <div className='text-muted-foreground flex min-w-0 items-center gap-2 px-1 text-xs'>
-                <Film className='h-4 w-4 shrink-0' />
-                <span className='truncate'>{params.model || t('Not set')}</span>
-              </div>
-              <Button type='submit' disabled={loading} className='h-9 shrink-0'>
-                {loading ? (
-                  <>
-                    <Loader2 className='mr-2 h-4 w-4 animate-spin' />
-                    {t('Generating...')}
-                  </>
-                ) : (
-                  <>
-                    <Wand2 className='mr-2 h-4 w-4' />
-                    {t('Generate video')}
-                  </>
+          </div>
+
+          {referenceEnabled ? (
+            <Input
+              type='url'
+              value={params.referenceImageUrl ?? ''}
+              onChange={(e) => {
+                const value = e.target.value
+                update('referenceImageUrl', value || undefined)
+              }}
+              placeholder='https://example.com/image.jpg'
+              aria-label={t('Reference image')}
+              className='h-9'
+            />
+          ) : null}
+
+          <div className='flex flex-wrap items-center justify-between gap-2'>
+            <div className='flex min-w-0 flex-1 flex-wrap items-center gap-1.5'>
+              <ComposerSelect
+                label={modelLabel}
+                ariaLabel={t('Model')}
+                contentClassName='w-80'
+              >
+                {(close) => (
+                  <ComposerModelList
+                    models={models}
+                    selectedId={params.model}
+                    loading={modelsLoading}
+                    onSelect={(modelId) => {
+                      const selected = models.find(
+                        (model) => model.id === modelId
+                      )
+                      setParams((prev) => ({
+                        ...prev,
+                        model: modelId,
+                        endpointTypes: selected?.endpointTypes ?? [],
+                      }))
+                      close()
+                    }}
+                    onAddCustom={(modelId) => {
+                      addCustomModel(modelId)
+                      setParams((prev) => ({
+                        ...prev,
+                        model: modelId,
+                        endpointTypes: [],
+                      }))
+                      close()
+                    }}
+                  />
                 )}
-              </Button>
+              </ComposerSelect>
+
+              <ComposerSelect
+                label={params.aspectRatio}
+                ariaLabel={t('Aspect ratio')}
+              >
+                {(close) =>
+                  ASPECT_RATIOS.map((item) => (
+                    <ComposerOption
+                      key={item.value}
+                      selected={item.value === params.aspectRatio}
+                      title={item.label}
+                      hint={t(item.hint)}
+                      onClick={() => {
+                        update('aspectRatio', item.value)
+                        close()
+                      }}
+                    />
+                  ))
+                }
+              </ComposerSelect>
+
+              <ComposerSelect
+                label={params.resolution}
+                ariaLabel={t('Resolution')}
+              >
+                {(close) =>
+                  resolutionOptions.map((item) => (
+                    <ComposerOption
+                      key={item.value}
+                      selected={item.value === params.resolution}
+                      title={item.value}
+                      hint={
+                        item.hint && item.hint !== item.value
+                          ? t(item.hint)
+                          : undefined
+                      }
+                      onClick={() => {
+                        update('resolution', item.value)
+                        close()
+                      }}
+                    />
+                  ))
+                }
+              </ComposerSelect>
+
+              <div className={cn(composerChipClass, 'gap-0.5 pr-0.5')}>
+                <input
+                  id='video-duration'
+                  type='number'
+                  inputMode='numeric'
+                  min={1}
+                  max={MAX_VIDEO_DURATION}
+                  value={params.duration}
+                  placeholder={t('Auto')}
+                  aria-label={t('Video duration')}
+                  className='placeholder:text-foreground h-full w-12 min-w-0 bg-transparent px-0.5 text-center text-xs font-medium outline-none [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none'
+                  onChange={(event) => update('duration', event.target.value)}
+                  onKeyDown={(event) => {
+                    if (event.key === 'Enter') event.preventDefault()
+                  }}
+                  onWheel={(event) => event.currentTarget.blur()}
+                />
+                {params.duration ? (
+                  <span className='text-muted-foreground pr-0.5 text-xs'>
+                    {durationUnit}
+                  </span>
+                ) : null}
+                <Popover open={durationMenuOpen} onOpenChange={setDurationMenuOpen}>
+                  <PopoverTrigger
+                    className='text-muted-foreground hover:bg-muted flex size-7 shrink-0 items-center justify-center rounded-full'
+                    aria-label={t('Video duration')}
+                  >
+                    <ChevronDown className='size-3.5 opacity-70' />
+                  </PopoverTrigger>
+                  <PopoverContent align='start' side='bottom' className='w-56 p-1.5'>
+                    <ComposerOption
+                      selected={params.duration === ''}
+                      title={t('Auto')}
+                      hint={t('Up to {{max}}s', { max: MAX_VIDEO_DURATION })}
+                      onClick={() => {
+                        update('duration', '')
+                        setDurationMenuOpen(false)
+                      }}
+                    />
+                    {DURATION_OPTIONS.map((value) => (
+                      <ComposerOption
+                        key={value}
+                        selected={params.duration === value}
+                        title={t('{{value}}s', { value })}
+                        onClick={() => {
+                          update('duration', value)
+                          setDurationMenuOpen(false)
+                        }}
+                      />
+                    ))}
+                    <div className='space-y-1 px-2.5 py-2'>
+                      <Label htmlFor='video-duration-custom' className='text-xs'>
+                        {t('Video duration')}
+                      </Label>
+                      <Input
+                        id='video-duration-custom'
+                        type='number'
+                        inputMode='numeric'
+                        min={1}
+                        max={MAX_VIDEO_DURATION}
+                        value={params.duration}
+                        onChange={(event) =>
+                          update('duration', event.target.value)
+                        }
+                        onKeyDown={(event) => {
+                          if (event.key === 'Enter') event.preventDefault()
+                        }}
+                        placeholder={t('Up to {{max}}s', {
+                          max: MAX_VIDEO_DURATION,
+                        })}
+                        aria-label={t('Video duration')}
+                      />
+                    </div>
+                  </PopoverContent>
+                </Popover>
+              </div>
             </div>
-          </form>
+
+            <Button
+              type='submit'
+              size='icon'
+              disabled={loading}
+              className='size-10 shrink-0 rounded-full'
+              aria-label={t('Generate video')}
+            >
+              {loading ? (
+                <Loader2 className='size-4 animate-spin' />
+              ) : (
+                <ArrowUp className='size-4' />
+              )}
+            </Button>
+          </div>
+        </form>
+
+        <div className='mt-3 flex gap-2 overflow-x-auto pb-1'>
+          {VIDEO_PROMPT_SUGGESTIONS.map((prompt) => (
+            <button
+              key={prompt}
+              type='button'
+              onClick={() => update('prompt', t(prompt))}
+              className='bg-muted/50 hover:bg-muted text-muted-foreground hover:text-foreground max-w-52 shrink-0 truncate rounded-full border px-3 py-1.5 text-left text-xs transition-colors'
+            >
+              {t(prompt)}
+            </button>
+          ))}
         </div>
       </div>
-    </>
+
+      <div className='space-y-4'>
+        <div className='flex items-center gap-2'>
+          <span className='bg-muted rounded-full px-3 py-1 text-sm font-medium'>
+            {t('Works')}
+          </span>
+        </div>
+
+        {historyLoading && history.length === 0 ? (
+          <div className='bg-muted relative aspect-[3/4] max-w-56 overflow-hidden rounded-xl'>
+            <div className='bg-background/35 absolute inset-0 flex items-center justify-center'>
+              <Loader2 className='text-primary size-6 animate-spin' />
+            </div>
+          </div>
+        ) : null}
+
+        {galleryItems.length > 0 ? (
+          <WorksMasonry
+            items={galleryItems}
+            getItemKey={(item) => item.id}
+            getItemWeight={(item) =>
+              masonryItemWeight(aspectById[item.id] ?? item.aspectRatio)
+            }
+            renderItem={(item) => (
+              <VideoWorksCard
+                item={item}
+                authorName={author.displayName}
+                authorInitials={author.initials}
+                coverAspect={aspectById[item.id]}
+                generating={item.id === '__generating__'}
+                onOpen={(opened) => setViewerId(opened.id)}
+                onDelete={
+                  item.id === '__generating__' ? undefined : deleteHistoryItem
+                }
+                onAspectMeasured={(id, ratio) => {
+                  setAspectById((current) => {
+                    if (current[id] === ratio) return current
+                    return { ...current, [id]: ratio }
+                  })
+                }}
+              />
+            )}
+          />
+        ) : null}
+        {!historyLoading && galleryItems.length === 0 ? (
+          <div className='text-muted-foreground py-10 text-center text-sm'>
+            {user?.id
+              ? t('No history yet')
+              : t('Sign in to save and view your generation history.')}
+          </div>
+        ) : null}
+      </div>
+      <VideoNoteViewer
+        items={history.filter((item) => Boolean(item.url))}
+        activeId={viewerId}
+        onClose={() => setViewerId(null)}
+        onActiveIdChange={setViewerId}
+        onDelete={deleteHistoryItem}
+        onUsePrompt={(item) => {
+          applyHistoryItem(item)
+          setViewerId(null)
+        }}
+      />
+    </div>
   )
 }

@@ -4,12 +4,17 @@ import (
 	"bytes"
 	"database/sql/driver"
 	"encoding/json"
+	"errors"
+	"strconv"
+	"strings"
 	"time"
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/constant"
 	commonRelay "github.com/QuantumNous/new-api/relay/common"
 	"github.com/QuantumNous/new-api/relaykit/dto"
+
+	"gorm.io/gorm"
 )
 
 type TaskStatus string
@@ -214,6 +219,44 @@ func InitTask(platform constant.TaskPlatform, relayInfo *commonRelay.RelayInfo) 
 	return t
 }
 
+const maxTaskPromptRunes = 8000
+
+func TaskPromptFromRequest(raw map[string]any) string {
+	if raw == nil {
+		return ""
+	}
+	if prompt := strings.TrimSpace(asTaskPromptString(raw["prompt"])); prompt != "" {
+		return clipTaskPrompt(prompt)
+	}
+	content, _ := raw["content"].([]any)
+	for _, item := range content {
+		record, ok := item.(map[string]any)
+		if !ok {
+			continue
+		}
+		if prompt := strings.TrimSpace(asTaskPromptString(record["text"])); prompt != "" {
+			return clipTaskPrompt(prompt)
+		}
+	}
+	return ""
+}
+
+func asTaskPromptString(value any) string {
+	s, ok := value.(string)
+	if !ok {
+		return ""
+	}
+	return s
+}
+
+func clipTaskPrompt(prompt string) string {
+	runes := []rune(prompt)
+	if len(runes) <= maxTaskPromptRunes {
+		return prompt
+	}
+	return string(runes[:maxTaskPromptRunes])
+}
+
 func TaskGetAllUserTask(userId int, startIdx int, num int, queryParams SyncTaskQueryParams) []*Task {
 	var tasks []*Task
 	var err error
@@ -348,6 +391,117 @@ func GetByTaskId(userId int, taskId string) (*Task, bool, error) {
 		return nil, false, err
 	}
 	return task, exist, err
+}
+
+func DeleteUserTask(userId int, taskId string) error {
+	task, err := findOwnedTaskForDelete(userId, taskId)
+	if err != nil {
+		return err
+	}
+	result := DB.Where("user_id = ? AND id = ?", userId, task.ID).Delete(&Task{})
+	if result.Error != nil {
+		return result.Error
+	}
+	if result.RowsAffected == 0 {
+		return gorm.ErrRecordNotFound
+	}
+	return nil
+}
+
+func findOwnedTaskForDelete(userId int, taskId string) (*Task, error) {
+	taskId = strings.TrimSpace(taskId)
+	if taskId == "" {
+		return nil, gorm.ErrRecordNotFound
+	}
+
+	var task Task
+	err := DB.Where("user_id = ? AND task_id = ?", userId, taskId).First(&task).Error
+	if err == nil {
+		return &task, nil
+	}
+	if !errors.Is(err, gorm.ErrRecordNotFound) {
+		return nil, err
+	}
+
+	if id, parseErr := strconv.ParseInt(taskId, 10, 64); parseErr == nil && id > 0 {
+		err = DB.Where("user_id = ? AND id = ?", userId, id).First(&task).Error
+		if err == nil {
+			return &task, nil
+		}
+		if !errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, err
+		}
+	}
+
+	var candidates []Task
+	err = DB.Where("user_id = ?", userId).Order("id desc").Limit(200).Find(&candidates).Error
+	if err != nil {
+		return nil, err
+	}
+	for i := range candidates {
+		if taskMatchesDeleteID(&candidates[i], taskId) {
+			return &candidates[i], nil
+		}
+	}
+	return nil, gorm.ErrRecordNotFound
+}
+
+func taskMatchesDeleteID(task *Task, taskId string) bool {
+	if task == nil || taskId == "" {
+		return false
+	}
+	if task.TaskID == taskId || task.PrivateData.UpstreamTaskID == taskId {
+		return true
+	}
+	for _, alias := range taskPayloadIDs(task.Data) {
+		if alias == taskId {
+			return true
+		}
+	}
+	return false
+}
+
+func taskPayloadIDs(data json.RawMessage) []string {
+	if len(data) == 0 {
+		return nil
+	}
+	var root any
+	if err := common.Unmarshal(data, &root); err != nil {
+		return nil
+	}
+	var ids []string
+	collectTaskPayloadIDs(root, &ids)
+	return ids
+}
+
+func collectTaskPayloadIDs(value any, ids *[]string) {
+	switch typed := value.(type) {
+	case map[string]any:
+		for key, nested := range typed {
+			if isTaskPayloadIDKey(key) {
+				if id, ok := nested.(string); ok {
+					id = strings.TrimSpace(id)
+					if id != "" {
+						*ids = append(*ids, id)
+					}
+				}
+			}
+			collectTaskPayloadIDs(nested, ids)
+		}
+	case []any:
+		for _, nested := range typed {
+			collectTaskPayloadIDs(nested, ids)
+		}
+	}
+}
+
+func isTaskPayloadIDKey(key string) bool {
+	switch strings.ToLower(key) {
+	case "id", "task_id", "taskid":
+		return true
+	default:
+		return false
+	}
 }
 
 func GetByTaskIds(userId int, taskIds []any) ([]*Task, error) {
