@@ -30,6 +30,7 @@ import {
   FormLabel,
   FormMessage,
 } from '@/components/ui/form'
+import { Input } from '@/components/ui/input'
 import { Switch } from '@/components/ui/switch'
 
 import {
@@ -61,6 +62,7 @@ const headerNavSchema = z.object({
   studioEnabled: z.boolean(),
   studioRequireAuth: z.boolean(),
   docs: z.boolean(),
+  docsUrl: z.string(),
   about: z.boolean(),
 })
 
@@ -114,7 +116,13 @@ const toFormValues = (config: HeaderNavModulesConfig): HeaderNavFormValues => ({
       ? HEADER_NAV_DEFAULT.studio.requireAuth
       : Boolean(config.studio.requireAuth),
   docs:
-    config.docs === undefined ? HEADER_NAV_DEFAULT.docs : Boolean(config.docs),
+    typeof config.docs === 'object'
+      ? Boolean(config.docs.enabled)
+      : config.docs === undefined
+        ? HEADER_NAV_DEFAULT.docs
+        : Boolean(config.docs),
+  docsUrl:
+    typeof config.docs === 'object' ? (config.docs.url ?? '') : '',
   about:
     config.about === undefined
       ? HEADER_NAV_DEFAULT.about
@@ -143,7 +151,9 @@ export function HeaderNavigationSection({
       ...config,
       home: values.home,
       console: values.console,
-      docs: values.docs,
+      docs: values.docsUrl.trim()
+        ? { enabled: values.docs, url: values.docsUrl.trim() }
+        : values.docs,
       about: values.about,
       pricing: {
         ...(config.pricing ?? HEADER_NAV_DEFAULT.pricing),
@@ -196,11 +206,6 @@ export function HeaderNavigationSection({
       key: 'console',
       title: t('Console'),
       description: t('Top nav "Console" entry, links to the dashboard (/dashboard).'),
-    },
-    {
-      key: 'docs',
-      title: t('Docs'),
-      description: t('Top nav "Docs" entry, links to documentation (/docs or external link).'),
     },
     {
       key: 'about',
@@ -307,6 +312,59 @@ export function HeaderNavigationSection({
                 )}
               />
             ))}
+
+            {/* Docs — with optional external URL */}
+            <SettingsControlGroup>
+              <FormField
+                control={form.control}
+                name='docs'
+                render={({ field }) => (
+                  <SettingsSwitchItem>
+                    <SettingsSwitchContent>
+                      <FormLabel className={formLabelClassName}>
+                        {t('Docs')}
+                      </FormLabel>
+                      <FormDescription className={formDescriptionClassName}>
+                        {t('Top nav "Docs" entry, links to documentation (/docs or external link).')}
+                      </FormDescription>
+                    </SettingsSwitchContent>
+                    <FormControl>
+                      <Switch
+                        checked={field.value}
+                        onCheckedChange={field.onChange}
+                      />
+                    </FormControl>
+                    <FormMessage />
+                  </SettingsSwitchItem>
+                )}
+              />
+              <FormField
+                control={form.control}
+                name='docsUrl'
+                render={({ field }) => (
+                  <SettingsControlChildren>
+                    <SettingsSwitchItem className='py-2'>
+                      <SettingsSwitchContent>
+                        <FormLabel className={formLabelClassName}>
+                          {t('External docs URL')}
+                        </FormLabel>
+                        <FormDescription className={formDescriptionClassName}>
+                          {t('If set, clicking "Docs" opens this URL in a new tab instead of /docs.')}
+                        </FormDescription>
+                      </SettingsSwitchContent>
+                      <FormControl>
+                        <Input
+                          placeholder='https://docs.example.com'
+                          disabled={!form.watch('docs')}
+                          {...field}
+                        />
+                      </FormControl>
+                      <FormMessage />
+                    </SettingsSwitchItem>
+                  </SettingsControlChildren>
+                )}
+              />
+            </SettingsControlGroup>
           </SettingsFormGrid>
 
           <SettingsFormGrid>

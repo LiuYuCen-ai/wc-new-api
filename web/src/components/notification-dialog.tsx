@@ -18,7 +18,8 @@ For commercial licensing, please contact support@quantumnous.com
 */
 import { Link } from '@tanstack/react-router'
 import type { TFunction } from 'i18next'
-import { Megaphone } from 'lucide-react'
+import { ChevronLeft, ChevronRight, Megaphone } from 'lucide-react'
+import { useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
@@ -165,6 +166,36 @@ function NoticeContent({
   )
 }
 
+const GUIDE_STEPS = [
+  { label: '在控制台中创建密钥' },
+  { label: '复制密钥到您所需要的应用中' },
+]
+
+function GuideSlide({ t }: { t: TFunction }) {
+  return (
+    <div className='flex min-h-[20vh] flex-col items-center justify-center gap-5 py-2 sm:min-h-[28vh]'>
+      <div className='flex w-full flex-col items-center gap-3'>
+        {GUIDE_STEPS.map((step, i) => (
+          <div key={i} className='flex w-full flex-col items-center gap-1'>
+            <div className='flex items-center gap-3'>
+              <div className='flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-[var(--announcement-primary,#facc15)] text-sm font-extrabold text-slate-900'>
+                {i + 1}
+              </div>
+              <span className='text-base font-medium text-white'>{step.label}</span>
+            </div>
+            {i < GUIDE_STEPS.length - 1 && (
+              <div className='h-4 w-px bg-white/30' />
+            )}
+          </div>
+        ))}
+      </div>
+      <p className='mt-1 max-w-xs text-center text-sm text-white/60'>
+        {t('如有疑问请查看详细文档或右下角私信客服')}
+      </p>
+    </div>
+  )
+}
+
 /**
  * Promo notice dialog
  */
@@ -178,19 +209,87 @@ export function NotificationDialog({
   const { t } = useTranslation()
   const user = useAuthStore((state) => state.auth.user)
   const showRegisterButton = !user
+  const [slide, setSlide] = useState(0)
+  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const TOTAL_SLIDES = 2
+
+  // 弹窗打开后 2 秒自动切换到第二屏
+  useEffect(() => {
+    if (!open) {
+      setSlide(0)
+      return
+    }
+    timerRef.current = setTimeout(() => {
+      setSlide(1)
+    }, 2000)
+    return () => {
+      if (timerRef.current) clearTimeout(timerRef.current)
+    }
+  }, [open])
+
+  const goTo = (index: number) => {
+    if (timerRef.current) clearTimeout(timerRef.current)
+    setSlide(index)
+  }
+
+  const titles = [t('Important Notice'), t('使用指南')]
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className='max-h-[58vh] w-[82vw] overflow-hidden rounded-[28px] border border-white/22 bg-white/12 p-3.5 text-white shadow-[0_20px_45px_rgba(0,0,0,0.28),inset_0_1px_0_rgba(255,255,255,0.28),inset_0_-1px_0_rgba(255,255,255,0.08)] [backdrop-filter:blur(22px)_saturate(150%)] [-webkit-backdrop-filter:blur(22px)_saturate(150%)] sm:max-h-[76vh] sm:w-full sm:max-w-md sm:p-5 dark:border-white/15 dark:bg-white/8 dark:text-white'>
         <DialogHeader>
-          <DialogTitle className='flex items-center gap-2 text-2xl font-semibold tracking-tight text-white dark:text-white'>
-            <Megaphone className='h-5 w-5 text-[var(--announcement-primary,#facc15)]' />
-            {t('Important Notice')}
-          </DialogTitle>
+          <div className='flex items-center justify-between'>
+            <DialogTitle className='flex items-center gap-2 text-2xl font-semibold tracking-tight text-white dark:text-white'>
+              <Megaphone className='h-5 w-5 text-[var(--announcement-primary,#facc15)]' />
+              {titles[slide]}
+            </DialogTitle>
+            <div className='flex items-center gap-1'>
+              <button
+                onClick={() => goTo((slide - 1 + TOTAL_SLIDES) % TOTAL_SLIDES)}
+                className='flex h-7 w-7 items-center justify-center rounded-full text-white/60 transition-colors hover:bg-white/10 hover:text-white'
+                aria-label='上一页'
+              >
+                <ChevronLeft className='h-4 w-4' />
+              </button>
+              <button
+                onClick={() => goTo((slide + 1) % TOTAL_SLIDES)}
+                className='flex h-7 w-7 items-center justify-center rounded-full text-white/60 transition-colors hover:bg-white/10 hover:text-white'
+                aria-label='下一页'
+              >
+                <ChevronRight className='h-4 w-4' />
+              </button>
+            </div>
+          </div>
+          {/* 指示点 */}
+          <div className='mt-1 flex items-center gap-1.5'>
+            {Array.from({ length: TOTAL_SLIDES }).map((_, i) => (
+              <button
+                key={i}
+                onClick={() => goTo(i)}
+                className={cn(
+                  'h-1.5 rounded-full transition-all duration-300',
+                  i === slide ? 'w-4 bg-[var(--announcement-primary,#facc15)]' : 'w-1.5 bg-white/30 hover:bg-white/50'
+                )}
+                aria-label={`切换到第${i + 1}页`}
+              />
+            ))}
+          </div>
         </DialogHeader>
 
-        <div className='mt-1'>
-          <NoticeContent notice={notice} loading={loading} t={t} />
+        <div className='mt-1 overflow-hidden'>
+          <div
+            className='flex transition-transform duration-500 ease-[cubic-bezier(0.16,1,0.3,1)]'
+            style={{ transform: `translateX(-${slide * 100}%)` }}
+          >
+            {/* 第一屏：公告内容 */}
+            <div className='w-full shrink-0'>
+              <NoticeContent notice={notice} loading={loading} t={t} />
+            </div>
+            {/* 第二屏：使用指南 */}
+            <div className='w-full shrink-0'>
+              <GuideSlide t={t} />
+            </div>
+          </div>
         </div>
 
         <DialogFooter className='flex-col-reverse gap-3 bg-transparent sm:flex-col-reverse sm:gap-3'>

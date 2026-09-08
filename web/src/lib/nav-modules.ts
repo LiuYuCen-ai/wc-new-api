@@ -30,9 +30,9 @@ export type HeaderNavModules = {
   photo: ModuleAccess
   video: ModuleAccess
   studio: ModuleAccess
-  docs: boolean
+  docs: boolean | { enabled: boolean; url?: string }
   about: boolean
-  [key: string]: boolean | ModuleAccess
+  [key: string]: boolean | ModuleAccess | { enabled: boolean; url?: string }
 }
 
 const DEFAULT_HEADER_NAV_MODULES: HeaderNavModules = {
@@ -140,6 +140,18 @@ export function parseHeaderNavModules(raw: unknown): HeaderNavModules {
     }
     if (key === 'studio') {
       result.studio = parseAccess(value, result.studio)
+      return
+    }
+    if (key === 'docs') {
+      if (value && typeof value === 'object') {
+        const r = value as Record<string, unknown>
+        result.docs = {
+          enabled: parseHeaderNavBoolean(r.enabled, true),
+          url: typeof r.url === 'string' ? r.url : undefined,
+        }
+      } else {
+        result.docs = parseHeaderNavBoolean(value, true)
+      }
       return
     }
 

@@ -21,6 +21,11 @@ export type HeaderNavAccessConfig = {
   requireAuth: boolean
 }
 
+export type HeaderNavDocsConfig = {
+  enabled: boolean
+  url?: string
+}
+
 export type HeaderNavModulesConfig = {
   home: boolean
   console: boolean
@@ -28,9 +33,9 @@ export type HeaderNavModulesConfig = {
   rankings: HeaderNavAccessConfig
   photo: HeaderNavAccessConfig
   studio: HeaderNavAccessConfig
-  docs: boolean
+  docs: boolean | HeaderNavDocsConfig
   about: boolean
-  [key: string]: boolean | HeaderNavAccessConfig
+  [key: string]: boolean | HeaderNavAccessConfig | HeaderNavDocsConfig
 }
 
 export type SidebarSectionConfig = {
@@ -177,6 +182,18 @@ export function parseHeaderNavModules(
       }
       if (key === 'studio') {
         result.studio = parseAccessModule(raw, base.studio)
+        return
+      }
+      if (key === 'docs') {
+        if (raw && typeof raw === 'object') {
+          const record = raw as Record<string, unknown>
+          result.docs = {
+            enabled: toBoolean(record.enabled, true),
+            url: typeof record.url === 'string' ? record.url : undefined,
+          }
+        } else {
+          result.docs = toBoolean(raw, true)
+        }
         return
       }
 
