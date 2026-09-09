@@ -85,7 +85,7 @@ import {
   pickGenerationSnapshot,
 } from './lib/photo-utils'
 import { PhotoWorksCard } from './components/photo-works-card'
-import { WorksMasonry } from './components/works-masonry'
+import { WorksFeedHeader, WorksMasonry } from './components/works-masonry'
 import {
   masonryItemWeight,
   photoCoverAspectFromSnapshot,
@@ -678,7 +678,6 @@ function PhotoHistorySection({
   onPreview: (state: PhotoPreviewState) => void
   onRequestDelete: (entry: HistoryImageEntry) => void
 }) {
-  const { t } = useTranslation()
   const visibleHistory = history.filter(
     (item) => item.status !== 'pending' || item.images.length > 0
   )
@@ -686,12 +685,8 @@ function PhotoHistorySection({
     !historyLoading && visibleHistory.length === 0 && !formLoading
 
   return (
-    <div className='space-y-4'>
-      <div className='flex items-center gap-2'>
-        <span className='bg-muted rounded-full px-3 py-1 text-sm font-medium'>
-          {t('Works')}
-        </span>
-      </div>
+    <div className='flex flex-col gap-3'>
+      <WorksFeedHeader />
       {historyLoading ? <PhotoPendingGrid count={3} /> : null}
       {formLoading ? <PhotoPendingGrid count={pendingDisplayCount} /> : null}
       {showEmpty ? <EmptyState /> : null}
@@ -715,11 +710,11 @@ function PhotoPendingGrid({ count }: { count: number }) {
   const slots = PHOTO_PENDING_SLOT_IDS.slice(0, slotCount)
 
   return (
-    <div className='grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4 xl:grid-cols-5'>
+    <div className='grid grid-cols-2 gap-2 sm:grid-cols-3 sm:gap-2.5 md:grid-cols-4 xl:grid-cols-5'>
       {slots.map((slotId) => (
         <div key={slotId} className='min-w-0'>
-          <div className='bg-muted relative aspect-[3/4] overflow-hidden rounded-xl'>
-            <Skeleton className='size-full rounded-xl' />
+          <div className='bg-muted relative aspect-[3/4] overflow-hidden rounded-lg'>
+            <Skeleton className='size-full rounded-lg' />
             <div className='bg-background/35 absolute inset-0 flex flex-col items-center justify-center gap-1'>
               <Loader2 className='text-primary size-5 animate-spin' />
               <span className='text-muted-foreground text-[10px]'>

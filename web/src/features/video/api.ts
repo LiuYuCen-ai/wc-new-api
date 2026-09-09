@@ -22,6 +22,7 @@ import { api } from '@/lib/api'
 import { isUpstreamSensitiveError } from '@/features/photo/lib/photo-utils'
 
 import {
+  VIDEO_TASK_PAGE_SIZE,
   toVideoHistoryItem,
   type UserVideoTask,
 } from './lib/video-history'
@@ -193,21 +194,43 @@ function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms))
 }
 
-export async function fetchUserVideoTasks(): Promise<VideoHistoryItem[] | null> {
+export type UserVideoTaskPage = {
+  items: VideoHistoryItem[]
+  page: number
+  pageSize: number
+  total: number
+}
+
+export async function fetchUserVideoTaskPage(
+  page = 1,
+  pageSize = VIDEO_TASK_PAGE_SIZE
+): Promise<UserVideoTaskPage | null> {
   try {
     const res = await api.get<{
       success: boolean
-      data?: { items?: UserVideoTask[] }
+      data?: {
+        items?: UserVideoTask[]
+        page?: number
+        page_size?: number
+        total?: number
+      }
     }>('/api/task/self', {
-      params: { p: 1, page_size: 50 },
+      params: { p: page, page_size: pageSize },
       skipErrorHandler: true,
     })
-    if (!res.data?.success || !Array.isArray(res.data.data?.items)) {
-      return res.data?.success ? [] : null
+    if (!res.data?.success) return null
+    const data = res.data.data
+    const items = Array.isArray(data?.items)
+      ? data.items
+          .map(toVideoHistoryItem)
+          .filter((item): item is VideoHistoryItem => item != null)
+      : []
+    return {
+      items,
+      page: data?.page ?? page,
+      pageSize: data?.page_size ?? pageSize,
+      total: data?.total ?? 0,
     }
-    return res.data.data.items
-      .map(toVideoHistoryItem)
-      .filter((item): item is VideoHistoryItem => item != null)
   } catch {
     return null
   }

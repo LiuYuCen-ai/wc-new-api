@@ -38,6 +38,9 @@ import { isTokenBasedModel } from '../lib/model-helpers'
 import {
   formatPrice,
   formatRequestPrice,
+  formatResolutionDisplayPrice,
+  getResolutionPriceEntries,
+  isResolutionPricingModel,
   stripTrailingZeros,
 } from '../lib/price'
 import type { PricingModel, TokenUnit } from '../types'
@@ -175,6 +178,39 @@ export function usePricingColumns(
         }
 
         const isTokenBased = isTokenBasedModel(model)
+
+        if (isResolutionPricingModel(model)) {
+          const resolutionEntries = getResolutionPriceEntries(model)
+          return (
+            <div className='max-w-full min-w-0'>
+              <span className='font-mono text-sm tabular-nums'>
+                {resolutionEntries.map((entry, index) => (
+                  <span key={entry.resolution}>
+                    {index > 0 ? (
+                      <span className='text-muted-foreground/40 mx-1'>/</span>
+                    ) : null}
+                    <span className='text-muted-foreground mr-1 text-[10px]'>
+                      {entry.resolution}
+                    </span>
+                    {stripTrailingZeros(
+                      formatResolutionDisplayPrice(
+                        model,
+                        entry.price,
+                        showRechargePrice,
+                        priceRate,
+                        usdExchangeRate,
+                        selectedGroup
+                      )
+                    )}
+                  </span>
+                ))}
+              </span>
+              <div className='text-muted-foreground/50 text-[10px]'>
+                / {t('request')}
+              </div>
+            </div>
+          )
+        }
 
         if (isTokenBased) {
           const inputPrice = stripTrailingZeros(

@@ -18,6 +18,7 @@ func TestSSRFProtectionRejectsLiteralPrivateAndReservedIPs(t *testing.T) {
 		"127.0.0.1",
 		"10.0.0.1",
 		"169.254.169.254",
+		"198.18.0.76",
 		"fc00::1",
 		"::ffff:127.0.0.1",
 	}
@@ -48,6 +49,33 @@ func TestSSRFProtectionRejectsResolvedPrivateIP(t *testing.T) {
 
 	require.NoError(t, protection.ValidateNetworkTarget("example.com", 80))
 	require.Error(t, protection.ValidateResolvedIP("example.com", net.ParseIP("169.254.169.254")))
+}
+
+func TestSSRFProtectionAllowsHostnameResolvedToFakeIP(t *testing.T) {
+	protection := &SSRFProtection{
+		AllowPrivateIp:         false,
+		DomainFilterMode:       false,
+		IpFilterMode:           false,
+		ApplyIPFilterForDomain: true,
+	}
+
+	require.NoError(t, protection.ValidateNetworkTarget("dashscope-0484.oss-accelerate.aliyuncs.com", 443))
+	require.NoError(t, protection.ValidateResolvedIP(
+		"dashscope-0484.oss-accelerate.aliyuncs.com",
+		net.ParseIP("198.18.0.76"),
+	))
+}
+
+func TestSSRFProtectionRejectsLiteralFakeIP(t *testing.T) {
+	protection := &SSRFProtection{
+		AllowPrivateIp:   false,
+		DomainFilterMode: false,
+		IpFilterMode:     false,
+	}
+
+	err := protection.ValidateNetworkTarget("198.18.0.76", 443)
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "private IP address not allowed")
 }
 
 func TestNewSSRFProtectionFromFetchSettingParsesPortRanges(t *testing.T) {

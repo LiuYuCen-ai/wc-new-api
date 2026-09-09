@@ -16,7 +16,8 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import type { VideoParams, VideoTaskStatus } from '../types'
+import { videoReferenceUrls } from './video-request'
+import type { VideoHistoryItem, VideoParams, VideoTaskStatus } from '../types'
 
 const SESSION_KEY = 'video_generation_jobs_v1'
 const MAX_JOB_AGE_MS = 30 * 60 * 1000
@@ -95,4 +96,31 @@ export function removePersistedVideoJob(jobId: string) {
   writePayload({
     jobs: payload.jobs.filter((item) => item.id !== jobId),
   })
+}
+
+export function pendingVideoJobsToHistoryItems(
+  jobs: PersistedVideoGenerationJob[]
+): VideoHistoryItem[] {
+  return [...jobs]
+    .sort((left, right) => right.startedAt - left.startedAt)
+    .map((job) => ({
+      id: job.id,
+      requestId: job.taskId ?? job.id,
+      status: job.status,
+      prompt: job.params.prompt,
+      model: job.params.model,
+      duration: job.params.duration,
+      aspectRatio: job.params.aspectRatio,
+      resolution: job.params.resolution,
+      referenceImageUrls: videoReferenceUrls(
+        job.params.referenceImageUrls,
+        job.params.referenceImageUrl
+      ),
+      referenceVideoUrls: videoReferenceUrls(
+        job.params.referenceVideoUrls,
+        job.params.referenceVideoUrl
+      ),
+      referenceAudioUrl: job.params.referenceAudioUrl,
+      createdAt: job.startedAt,
+    }))
 }

@@ -22,11 +22,14 @@ import { create } from 'zustand'
 import { randomUUID } from '@/lib/utils'
 import {
   deleteUserVideoTask,
-  fetchUserVideoTasks,
+  fetchUserVideoTaskPage,
   pollVideoTask,
   submitVideoTask,
 } from '@/features/video/api'
+import { videoReferenceUrls } from '@/features/video/lib/video-request'
 import {
+  cacheVideoHistory,
+  hasMoreTaskPages,
   mergeVideoHistory,
   remoteContainsVideoWork,
   syncVideoHistoryFromRemote,
@@ -45,6 +48,8 @@ import type {
 } from '@/features/video/types'
 
 const VIDEO_HISTORY_KEY = 'quick-video-history'
+const MAX_EMPTY_PAGE_LOOKAHEAD = 8
+const MIN_HISTORY_PAGE_VIDEOS = 8
 const activePolls = new Set<string>()
 
 export type PendingVideoJob = {
@@ -60,11 +65,16 @@ type VideoGenerationStore = {
   historyUserId: number | null
   history: VideoHistoryItem[]
   historyLoading: boolean
-  pendingJob: PendingVideoJob | null
+  historyLoadingMore: boolean
+  historyPage: number
+  historyTotal: number
+  historyHasMore: boolean
+  pendingJobs: PendingVideoJob[]
   viewerId: string | null
   resetForUser: () => void
   setViewerId: (id: string | null) => void
   loadHistory: (userId: number) => Promise<void>
+  loadMoreHistory: () => Promise<void>
   startGeneration: (params: VideoParams, userId: number) => Promise<void>
   deleteHistoryItem: (id: string) => Promise<boolean>
 }
@@ -95,7 +105,7 @@ function saveVideoHistory(userId: number, history: VideoHistoryItem[]) {
   try {
     window.sessionStorage.setItem(
       videoHistoryStorageKey(userId),
-      JSON.stringify(history)
+      JSON.stringify(cacheVideoHistory(history))
     )
   } catch {
     // sessionStorage may be unavailable.
@@ -123,6 +133,80 @@ function persistJob(job: PendingVideoJob) {
   upsertPersistedVideoJob(job)
 }
 
+function patchPendingJob(jobId: string, next: PendingVideoJob | null) {
+  useVideoGenerationStore.setState((state) => ({
+    pendingJobs:
+      next == null
+        ? state.pendingJobs.filter((job) => job.id !== jobId)
+        : state.pendingJobs.map((job) => (job.id === jobId ? next : job)),
+  }))
+}
+
+function resumablePersistedJobs(userId: number): PendingVideoJob[] {
+  const jobs = loadPersistedVideoJobs(userId)
+  const resumable: PendingVideoJob[] = []
+  for (const job of jobs) {
+    if (job.taskId) {
+      resumable.push(job)
+      continue
+    }
+    removePersistedVideoJob(job.id)
+  }
+  return resumable
+}
+
+type PulledVideoPages = {
+  history: VideoHistoryItem[]
+  page: number
+  pageSize: number
+  total: number
+  failed: boolean
+}
+
+async function pullVideoTaskPages(input: {
+  userId: number
+  fromPage: number
+  existing: VideoHistoryItem[]
+  minNewItems: number
+}): Promise<PulledVideoPages | null> {
+  let page = input.fromPage - 1
+  let pageSize = 0
+  let total = 0
+  let history = input.existing
+  let added = 0
+  let rounds = 0
+  let failed = false
+
+  while (rounds < MAX_EMPTY_PAGE_LOOKAHEAD) {
+    const result = await fetchUserVideoTaskPage(page + 1)
+    if (useVideoGenerationStore.getState().historyUserId !== input.userId) {
+      return null
+    }
+    if (result == null) {
+      failed = rounds === 0
+      break
+    }
+    page = result.page
+    pageSize = result.pageSize
+    total = result.total
+    const merged = mergeVideoHistory(result.items, history)
+    added += merged.length - history.length
+    history = merged
+    rounds += 1
+    if (added >= input.minNewItems || !hasMoreTaskPages(page, pageSize, total)) {
+      break
+    }
+  }
+
+  return {
+    history,
+    page: Math.max(page, 0),
+    pageSize,
+    total,
+    failed,
+  }
+}
+
 async function finishVideoJob(input: {
   userId: number
   jobId: string
@@ -140,29 +224,30 @@ async function finishVideoJob(input: {
     duration: input.params.duration,
     aspectRatio: input.params.aspectRatio,
     resolution: input.params.resolution,
-    referenceImageUrl: input.params.referenceImageUrl,
+    referenceImageUrls: videoReferenceUrls(
+      input.params.referenceImageUrls,
+      input.params.referenceImageUrl
+    ),
+    referenceVideoUrls: videoReferenceUrls(
+      input.params.referenceVideoUrls,
+      input.params.referenceVideoUrl
+    ),
+    referenceAudioUrl: input.params.referenceAudioUrl,
     createdAt: Date.now(),
   }
 
   const current = useVideoGenerationStore.getState()
   const local =
     current.historyUserId === input.userId ? current.history : loadVideoHistory(input.userId)
-  const remote = await fetchUserVideoTasks()
+  const remote = await fetchUserVideoTaskPage(1)
   const next =
     remote == null
       ? mergeVideoHistory([], [nextItem, ...local])
-      : syncVideoHistoryFromRemote(remote, [nextItem, ...local])
+      : mergeVideoHistory(remote.items, [nextItem, ...local])
 
   applyHistory(input.userId, next)
   removePersistedVideoJob(input.jobId)
-  useVideoGenerationStore.setState((state) => {
-    if (state.pendingJob?.id !== input.jobId) return state
-    const opened = next.find((item) => remoteContainsVideoWork([item], nextItem))
-    return {
-      pendingJob: null,
-      viewerId: opened?.id ?? input.result.requestId,
-    }
-  })
+  patchPendingJob(input.jobId, null)
   toast.success(t('Video generated successfully'))
 }
 
@@ -171,11 +256,13 @@ async function pollUntilDone(job: PendingVideoJob) {
   activePolls.add(job.id)
   try {
     const result = await pollVideoTask(job.taskId, (status) => {
-      useVideoGenerationStore.setState((state) => {
-        if (state.pendingJob?.id !== job.id) return state
-        persistJob({ ...state.pendingJob, status })
-        return { pendingJob: { ...state.pendingJob, status } }
-      })
+      const current = useVideoGenerationStore
+        .getState()
+        .pendingJobs.find((item) => item.id === job.id)
+      if (!current) return
+      const next = { ...current, status }
+      persistJob(next)
+      patchPendingJob(job.id, next)
     })
     await finishVideoJob({
       userId: job.userId,
@@ -186,9 +273,7 @@ async function pollUntilDone(job: PendingVideoJob) {
   } catch (err) {
     toast.error(friendlyError(err))
     removePersistedVideoJob(job.id)
-    useVideoGenerationStore.setState((state) =>
-      state.pendingJob?.id === job.id ? { pendingJob: null } : state
-    )
+    patchPendingJob(job.id, null)
   } finally {
     activePolls.delete(job.id)
   }
@@ -199,7 +284,11 @@ export const useVideoGenerationStore = create<VideoGenerationStore>()(
     historyUserId: null,
     history: [],
     historyLoading: false,
-    pendingJob: null,
+    historyLoadingMore: false,
+    historyPage: 0,
+    historyTotal: 0,
+    historyHasMore: false,
+    pendingJobs: [],
     viewerId: null,
 
     resetForUser: () => {
@@ -207,7 +296,11 @@ export const useVideoGenerationStore = create<VideoGenerationStore>()(
         historyUserId: null,
         history: [],
         historyLoading: false,
-        pendingJob: null,
+        historyLoadingMore: false,
+        historyPage: 0,
+        historyTotal: 0,
+        historyHasMore: false,
+        pendingJobs: [],
         viewerId: null,
       })
     },
@@ -216,24 +309,47 @@ export const useVideoGenerationStore = create<VideoGenerationStore>()(
 
     loadHistory: async (userId) => {
       const local = loadVideoHistory(userId)
-      const persisted = loadPersistedVideoJobs(userId)[0] ?? null
+      const persisted = resumablePersistedJobs(userId)
       set({
         historyUserId: userId,
         history: local,
         historyLoading: true,
-        pendingJob: persisted,
+        historyLoadingMore: false,
+        historyPage: 0,
+        historyTotal: 0,
+        historyHasMore: false,
+        pendingJobs: persisted,
       })
       try {
-        const remote = await fetchUserVideoTasks()
-        if (get().historyUserId !== userId) return
-        if (remote != null) {
-          const synced = syncVideoHistoryFromRemote(remote, local)
-          applyHistory(userId, synced)
+        const pulled = await pullVideoTaskPages({
+          userId,
+          fromPage: 1,
+          existing: [],
+          minNewItems: MIN_HISTORY_PAGE_VIDEOS,
+        })
+        if (pulled == null || get().historyUserId !== userId) return
+        if (!pulled.failed) {
+          const hasMore = hasMoreTaskPages(
+            pulled.page,
+            pulled.pageSize,
+            pulled.total
+          )
+          applyHistory(
+            userId,
+            hasMore
+              ? mergeVideoHistory(pulled.history, local)
+              : syncVideoHistoryFromRemote(pulled.history, local)
+          )
+          set({
+            historyPage: pulled.page,
+            historyTotal: pulled.total,
+            historyHasMore: hasMore,
+          })
         }
-        const job = loadPersistedVideoJobs(userId)[0]
-        if (job) {
-          set({ pendingJob: job })
-          if (job.taskId) void pollUntilDone(job)
+        const jobs = resumablePersistedJobs(userId)
+        set({ pendingJobs: jobs })
+        for (const job of jobs) {
+          void pollUntilDone(job)
         }
       } finally {
         if (get().historyUserId === userId) {
@@ -242,8 +358,47 @@ export const useVideoGenerationStore = create<VideoGenerationStore>()(
       }
     },
 
+    loadMoreHistory: async () => {
+      const state = get()
+      if (
+        !state.historyUserId ||
+        state.historyLoading ||
+        state.historyLoadingMore ||
+        !state.historyHasMore
+      ) {
+        return
+      }
+
+      set({ historyLoadingMore: true })
+      try {
+        const pulled = await pullVideoTaskPages({
+          userId: state.historyUserId,
+          fromPage: state.historyPage + 1,
+          existing: state.history,
+          minNewItems: MIN_HISTORY_PAGE_VIDEOS,
+        })
+        if (pulled == null || get().historyUserId !== state.historyUserId) {
+          return
+        }
+        if (pulled.failed) return
+        applyHistory(state.historyUserId, pulled.history)
+        set({
+          historyPage: pulled.page,
+          historyTotal: pulled.total,
+          historyHasMore: hasMoreTaskPages(
+            pulled.page,
+            pulled.pageSize,
+            pulled.total
+          ),
+        })
+      } finally {
+        if (get().historyUserId === state.historyUserId) {
+          set({ historyLoadingMore: false })
+        }
+      }
+    },
+
     startGeneration: async (params, userId) => {
-      if (get().pendingJob) return
       const job: PendingVideoJob = {
         id: randomUUID(),
         userId,
@@ -252,21 +407,19 @@ export const useVideoGenerationStore = create<VideoGenerationStore>()(
         startedAt: Date.now(),
       }
       persistJob(job)
-      set({ pendingJob: job, viewerId: null })
+      set((state) => ({
+        pendingJobs: [job, ...state.pendingJobs],
+      }))
       try {
         const { taskId } = await submitVideoTask(params)
         const submitted = { ...job, taskId, status: 'processing' as const }
         persistJob(submitted)
-        set((state) =>
-          state.pendingJob?.id === job.id ? { pendingJob: submitted } : state
-        )
-        await pollUntilDone(submitted)
+        patchPendingJob(job.id, submitted)
+        void pollUntilDone(submitted)
       } catch (err) {
         toast.error(friendlyError(err))
         removePersistedVideoJob(job.id)
-        set((state) =>
-          state.pendingJob?.id === job.id ? { pendingJob: null } : state
-        )
+        patchPendingJob(job.id, null)
       }
     },
 
@@ -276,29 +429,19 @@ export const useVideoGenerationStore = create<VideoGenerationStore>()(
       const item = history.find((entry) => entry.id === id)
       if (!item) return false
       const deleted = await deleteUserVideoTask(videoTaskDeleteIds(item))
-      const nextLocal = history.filter(
-        (entry) => !remoteContainsVideoWork([entry], item)
-      )
-      const remote = await fetchUserVideoTasks()
-      if (remote == null) {
-        if (!deleted) {
-          toast.error(t('Delete failed'))
-          return false
-        }
-        applyHistory(historyUserId, nextLocal)
-        return true
-      }
-      if (remoteContainsVideoWork(remote, item)) {
+      if (!deleted) {
         toast.error(t('Delete failed'))
-        applyHistory(historyUserId, syncVideoHistoryFromRemote(remote, nextLocal))
         return false
       }
-      applyHistory(historyUserId, syncVideoHistoryFromRemote(remote, nextLocal))
+      applyHistory(
+        historyUserId,
+        history.filter((entry) => !remoteContainsVideoWork([entry], item))
+      )
       return true
     },
   })
 )
 
 export function useVideoGenerating() {
-  return useVideoGenerationStore((state) => Boolean(state.pendingJob))
+  return useVideoGenerationStore((state) => state.pendingJobs.length > 0)
 }

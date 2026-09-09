@@ -397,6 +397,9 @@ func (a *TaskAdaptor) convertToV2RequestPayload(req *relaycommon.TaskSubmitReq, 
 	}
 
 	hasMedia := hasV2MediaInput(videoRequest.Content)
+	if videoRequest.Ratio == "" && strings.TrimSpace(req.Ratio) != "" {
+		videoRequest.Ratio = strings.TrimSpace(req.Ratio)
+	}
 	if videoRequest.Ratio == "" {
 		if hasMedia {
 			videoRequest.Ratio = "adaptive"
@@ -424,19 +427,40 @@ func buildV2Content(req *relaycommon.TaskSubmitReq) ([]ContentItem, error) {
 		Text: prompt,
 	}}
 
+	reqImages := uniqueTrimmedURLs(req.Images)
+	if extra := strings.TrimSpace(req.Image); extra != "" {
+		reqImages = uniqueTrimmedURLs(append(reqImages, extra))
+	}
+	if extra := strings.TrimSpace(req.InputReference); extra != "" {
+		reqImages = uniqueTrimmedURLs(append(reqImages, extra))
+	}
+
 	firstFrame := metadataString(req.Metadata, "first_frame_image")
 	lastFrame := metadataString(req.Metadata, "last_frame_image")
-	if firstFrame == "" && len(req.Images) > 0 {
-		firstFrame = strings.TrimSpace(req.Images[0])
+	referenceImages := metadataURLList(req.Metadata, "reference_images", "reference_image")
+	videoURLs := metadataURLList(req.Metadata, "video_urls", "video_url")
+	audioURL := metadataString(req.Metadata, "audio_url")
+	hasExplicitReference := len(referenceImages) > 0 || len(videoURLs) > 0 || audioURL != ""
+
+	if hasExplicitReference {
+		if len(referenceImages) == 0 {
+			if len(reqImages) > 0 {
+				referenceImages = reqImages
+			} else {
+				referenceImages = uniqueTrimmedURLs([]string{firstFrame, lastFrame})
+			}
+		}
+		return appendReferenceContent(content, referenceImages, videoURLs, audioURL), nil
 	}
-	if lastFrame == "" && len(req.Images) > 1 {
-		lastFrame = strings.TrimSpace(req.Images[1])
+
+	if firstFrame == "" && len(reqImages) > 0 {
+		firstFrame = reqImages[0]
 	}
-	if firstFrame == "" && strings.TrimSpace(req.Image) != "" {
-		firstFrame = strings.TrimSpace(req.Image)
+	if lastFrame == "" && len(reqImages) > 1 {
+		lastFrame = reqImages[1]
 	}
-	if firstFrame == "" && strings.TrimSpace(req.InputReference) != "" {
-		firstFrame = strings.TrimSpace(req.InputReference)
+	if len(reqImages) > 2 {
+		return appendReferenceContent(content, reqImages, nil, ""), nil
 	}
 
 	if firstFrame != "" {
@@ -455,6 +479,83 @@ func buildV2Content(req *relaycommon.TaskSubmitReq) ([]ContentItem, error) {
 	}
 
 	return content, nil
+}
+
+func appendReferenceContent(content []ContentItem, images, videos []string, audio string) []ContentItem {
+	for _, url := range capURLs(images, MaxReferenceImagesH3) {
+		content = append(content, ContentItem{
+			Type:     "image_url",
+			ImageURL: &MediaURL{URL: url},
+			Role:     "reference_image",
+		})
+	}
+	for _, url := range capURLs(videos, MaxReferenceVideosH3) {
+		content = append(content, ContentItem{
+			Type:     "video_url",
+			VideoURL: &MediaURL{URL: url},
+			Role:     "reference_video",
+		})
+	}
+	if strings.TrimSpace(audio) != "" {
+		content = append(content, ContentItem{
+			Type:     "audio_url",
+			AudioURL: &MediaURL{URL: strings.TrimSpace(audio)},
+			Role:     "reference_audio",
+		})
+	}
+	return content
+}
+
+func uniqueTrimmedURLs(values []string) []string {
+	out := make([]string, 0, len(values))
+	seen := make(map[string]struct{}, len(values))
+	for _, value := range values {
+		url := strings.TrimSpace(value)
+		if url == "" {
+			continue
+		}
+		if _, exists := seen[url]; exists {
+			continue
+		}
+		seen[url] = struct{}{}
+		out = append(out, url)
+	}
+	return out
+}
+
+func capURLs(values []string, max int) []string {
+	out := uniqueTrimmedURLs(values)
+	if max > 0 && len(out) > max {
+		return out[:max]
+	}
+	return out
+}
+
+func metadataURLList(metadata map[string]interface{}, keys ...string) []string {
+	var values []string
+	for _, key := range keys {
+		if metadata == nil {
+			break
+		}
+		switch typed := metadata[key].(type) {
+		case string:
+			values = append(values, typed)
+		case []string:
+			values = append(values, typed...)
+		case []interface{}:
+			for _, item := range typed {
+				switch nested := item.(type) {
+				case string:
+					values = append(values, nested)
+				case map[string]interface{}:
+					if url, ok := nested["url"].(string); ok {
+						values = append(values, url)
+					}
+				}
+			}
+		}
+	}
+	return uniqueTrimmedURLs(values)
 }
 
 func hasNonEmptyText(content []ContentItem) bool {

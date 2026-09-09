@@ -60,7 +60,6 @@ var privateIPv4Nets = []net.IPNet{
 	{IP: net.IPv4(192, 0, 0, 0), Mask: net.CIDRMask(24, 32)},       // 192.0.0.0/24 (IETF 协议分配)
 	{IP: net.IPv4(192, 0, 2, 0), Mask: net.CIDRMask(24, 32)},       // 192.0.2.0/24 (TEST-NET-1)
 	{IP: net.IPv4(192, 168, 0, 0), Mask: net.CIDRMask(16, 32)},     // 192.168.0.0/16 (私有)
-	{IP: net.IPv4(198, 18, 0, 0), Mask: net.CIDRMask(15, 32)},      // 198.18.0.0/15 (基准测试)
 	{IP: net.IPv4(198, 51, 100, 0), Mask: net.CIDRMask(24, 32)},    // 198.51.100.0/24 (TEST-NET-2)
 	{IP: net.IPv4(203, 0, 113, 0), Mask: net.CIDRMask(24, 32)},     // 203.0.113.0/24 (TEST-NET-3)
 	{IP: net.IPv4(224, 0, 0, 0), Mask: net.CIDRMask(4, 32)},        // 224.0.0.0/4 (组播)
@@ -92,6 +91,27 @@ var privateIPv6Nets = func() []net.IPNet {
 	}
 	return nets
 }()
+
+// fakeIPv4Nets is RFC 2544 benchmarking space (198.18.0.0/15). Clash, sing-box
+// and similar local proxies assign these as DNS fake-ip placeholders. They are
+// not LAN/metadata addresses, so a hostname that resolves here must still be
+// fetchable. Literal URLs in this range stay blocked.
+var fakeIPv4Nets = []net.IPNet{
+	{IP: net.IPv4(198, 18, 0, 0), Mask: net.CIDRMask(15, 32)},
+}
+
+func isFakeIP(ip net.IP) bool {
+	v4 := ip.To4()
+	if v4 == nil {
+		return false
+	}
+	for _, fakeNet := range fakeIPv4Nets {
+		if fakeNet.Contains(v4) {
+			return true
+		}
+	}
+	return false
+}
 
 // isPrivateIP 检查IP是否为私有/保留/特殊用途地址
 func isPrivateIP(ip net.IP) bool {
@@ -268,7 +288,7 @@ func (p *SSRFProtection) IsIPAccessAllowed(ip net.IP) bool {
 
 func (p *SSRFProtection) ipAccessError(host string, ip net.IP) error {
 	if host != "" {
-		if isPrivateIP(ip) && !p.AllowPrivateIp {
+		if (isPrivateIP(ip) || isFakeIP(ip)) && !p.AllowPrivateIp {
 			return fmt.Errorf("private IP address not allowed: %s resolves to %s", host, ip.String())
 		}
 		if p.IpFilterMode {
@@ -277,7 +297,7 @@ func (p *SSRFProtection) ipAccessError(host string, ip net.IP) error {
 		return fmt.Errorf("ip in blacklist: %s resolves to %s", host, ip.String())
 	}
 
-	if isPrivateIP(ip) && !p.AllowPrivateIp {
+	if (isPrivateIP(ip) || isFakeIP(ip)) && !p.AllowPrivateIp {
 		return fmt.Errorf("private IP address not allowed: %s", ip.String())
 	}
 	if p.IpFilterMode {
@@ -300,6 +320,9 @@ func (p *SSRFProtection) ValidateNetworkTarget(host string, port int) error {
 	}
 
 	if ip := net.ParseIP(host); ip != nil {
+		if isFakeIP(ip) && !p.AllowPrivateIp {
+			return p.ipAccessError("", ip)
+		}
 		if !p.IsIPAccessAllowed(ip) {
 			return p.ipAccessError("", ip)
 		}

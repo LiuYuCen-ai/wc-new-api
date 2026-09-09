@@ -68,6 +68,9 @@ const (
 	DefaultDurationH3   = 5
 	DefaultResolutionH3 = Resolution768P
 	DefaultRatioH3      = "16:9"
+
+	MaxReferenceImagesH3 = 9
+	MaxReferenceVideosH3 = 3
 )
 
 const ModelMiniMaxH3 = "MiniMax-H3"

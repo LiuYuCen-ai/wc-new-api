@@ -21,6 +21,8 @@ import { describe, test } from 'node:test'
 
 import {
   coverFocusPosition,
+  feedCoverAspectCss,
+  feedCoverWeight,
   masonryColumnCountForWidth,
   masonryItemWeight,
   mediaAspectRatioCss,
@@ -53,11 +55,19 @@ describe('media aspect helpers', () => {
     assert.ok(masonryItemWeight('9:16') > masonryItemWeight('16:9'))
   })
 
+  test('crops extreme video covers so feed cards stay readable', () => {
+    assert.equal(feedCoverAspectCss('16:9'), '4 / 3')
+    assert.equal(feedCoverAspectCss('9:16'), '3 / 4')
+    assert.equal(feedCoverAspectCss('1:1'), '1 / 1')
+    assert.ok(feedCoverWeight('9:16') > feedCoverWeight('16:9'))
+  })
+
   test('uses more columns on wider screens', () => {
     assert.equal(masonryColumnCountForWidth(390), 2)
-    assert.equal(masonryColumnCountForWidth(700), 3)
-    assert.equal(masonryColumnCountForWidth(900), 4)
-    assert.equal(masonryColumnCountForWidth(1100), 5)
+    assert.equal(masonryColumnCountForWidth(640), 2)
+    assert.equal(masonryColumnCountForWidth(800), 3)
+    assert.equal(masonryColumnCountForWidth(1024), 4)
+    assert.equal(masonryColumnCountForWidth(1232), 4)
     assert.equal(masonryColumnCountForWidth(1400), 5)
   })
 

@@ -20,7 +20,9 @@ import assert from 'node:assert/strict'
 import { describe, test } from 'node:test'
 
 import {
+  cacheVideoHistory,
   excludeRemovedVideoHistory,
+  hasMoreTaskPages,
   isVideoGenerationTask,
   mergeVideoHistory,
   remoteContainsVideoWork,
@@ -60,6 +62,16 @@ describe('isVideoGenerationTask', () => {
       true
     )
   })
+
+  test('keeps MiniMax-H3 records from the task log even without an action', () => {
+    assert.equal(
+      isVideoGenerationTask({
+        task_id: 'task_h3',
+        properties: { origin_model_name: 'MiniMax-H3' },
+      }),
+      true
+    )
+  })
 })
 
 describe('toVideoHistoryItem', () => {
@@ -90,6 +102,71 @@ describe('toVideoHistoryItem', () => {
       resolution: '',
       createdAt: 1_700_000_000_000,
     })
+  })
+
+  test('keeps a custom aspect ratio from task metadata', () => {
+    const item = toVideoHistoryItem({
+      task_id: 'task_custom_ratio',
+      action: 'generate',
+      status: 'SUCCESS',
+      result_url: 'https://cdn.example.com/a.mp4',
+      created_at: 1_700_000_000,
+      properties: { origin_model_name: 'MiniMax-H3' },
+      data: { metadata: { ratio: '4:5' } },
+    })
+    assert.equal(item?.aspectRatio, '4:5')
+  })
+
+  test('reads reference video and audio URLs from metadata', () => {
+    const item = toVideoHistoryItem({
+      task_id: 'task_ref_media',
+      action: 'generate',
+      status: 'SUCCESS',
+      result_url: 'https://cdn.example.com/a.mp4',
+      created_at: 1_700_000_000,
+      properties: { origin_model_name: 'MiniMax-H3' },
+      data: {
+        metadata: {
+          reference_image: 'https://example.com/ref.png',
+          video_url: 'https://example.com/ref.mp4',
+          audio_url: 'https://example.com/ref.mp3',
+        },
+      },
+    })
+    assert.deepEqual(item?.referenceImageUrls, ['https://example.com/ref.png'])
+    assert.deepEqual(item?.referenceVideoUrls, ['https://example.com/ref.mp4'])
+    assert.equal(item?.referenceAudioUrl, 'https://example.com/ref.mp3')
+  })
+
+  test('reads multiple reference image and video URLs from metadata', () => {
+    const item = toVideoHistoryItem({
+      task_id: 'task_ref_media_many',
+      action: 'generate',
+      status: 'SUCCESS',
+      result_url: 'https://cdn.example.com/a.mp4',
+      created_at: 1_700_000_000,
+      properties: { origin_model_name: 'MiniMax-H3' },
+      data: {
+        metadata: {
+          reference_images: [
+            'https://example.com/a.png',
+            'https://example.com/b.png',
+          ],
+          video_urls: [
+            'https://example.com/a.mp4',
+            'https://example.com/b.mp4',
+          ],
+        },
+      },
+    })
+    assert.deepEqual(item?.referenceImageUrls, [
+      'https://example.com/a.png',
+      'https://example.com/b.png',
+    ])
+    assert.deepEqual(item?.referenceVideoUrls, [
+      'https://example.com/a.mp4',
+      'https://example.com/b.mp4',
+    ])
   })
 
   test('keeps nested payload ids so delete can target the database row', () => {
@@ -221,6 +298,79 @@ describe('mergeVideoHistory', () => {
     assert.equal(merged.length, 1)
     assert.equal(merged[0]?.requestId, 'task_public')
     assert.equal(merged[0]?.prompt, 'a rainy street')
+  })
+
+  test('keeps cached local works while a later task-log page is still loading', () => {
+    const remote = Array.from({ length: 8 }, (_, index) => ({
+      id: `task_${index}`,
+      requestId: `task_${index}`,
+      status: 'done' as const,
+      url: `https://cdn.example.com/${index}.mp4`,
+      prompt: `clip ${index}`,
+      model: 'MiniMax-H3',
+      duration: '5',
+      aspectRatio: '16:9' as const,
+      resolution: '720P',
+      createdAt: 2000 - index,
+    }))
+    const local = Array.from({ length: 12 }, (_, index) => ({
+      id: `local_${index}`,
+      requestId: `local_${index}`,
+      status: 'done' as const,
+      url: `https://cdn.example.com/local-${index}.mp4`,
+      prompt: `local ${index}`,
+      model: 'MiniMax-H3',
+      duration: '5',
+      aspectRatio: '16:9' as const,
+      resolution: '720P',
+      createdAt: 100 - index,
+    }))
+
+    assert.equal(mergeVideoHistory(remote, local).length, 20)
+  })
+
+  test('keeps the full task log timeline instead of capping at 50 works', () => {
+    const remote = Array.from({ length: 51 }, (_, index) => ({
+      id: `task_${index}`,
+      requestId: `task_${index}`,
+      status: 'done' as const,
+      url: `https://cdn.example.com/${index}.mp4`,
+      prompt: `clip ${index}`,
+      model: 'MiniMax-H3',
+      duration: '5',
+      aspectRatio: '16:9' as const,
+      resolution: '720P',
+      createdAt: 1000 - index,
+    }))
+    assert.equal(mergeVideoHistory(remote, []).length, 51)
+  })
+})
+
+describe('cacheVideoHistory', () => {
+  test('keeps only a session-sized prefix for storage', () => {
+    const remote = Array.from({ length: 51 }, (_, index) => ({
+      id: `task_${index}`,
+      requestId: `task_${index}`,
+      status: 'done' as const,
+      url: `https://cdn.example.com/${index}.mp4`,
+      prompt: `clip ${index}`,
+      model: 'MiniMax-H3',
+      duration: '5',
+      aspectRatio: '16:9' as const,
+      resolution: '720P',
+      createdAt: 1000 - index,
+    }))
+    assert.equal(cacheVideoHistory(remote).length, 50)
+    assert.equal(cacheVideoHistory(remote)[0]?.id, 'task_0')
+  })
+})
+
+describe('hasMoreTaskPages', () => {
+  test('reads past the first task log page across the full timeline', () => {
+    assert.equal(hasMoreTaskPages(1, 50, 50), false)
+    assert.equal(hasMoreTaskPages(1, 50, 51), true)
+    assert.equal(hasMoreTaskPages(2, 50, 51), false)
+    assert.equal(hasMoreTaskPages(0, 50, 100), false)
   })
 })
 

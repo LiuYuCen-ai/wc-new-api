@@ -21,6 +21,7 @@ import { afterEach, describe, test } from 'node:test'
 
 import {
   loadPersistedVideoJobs,
+  pendingVideoJobsToHistoryItems,
   removePersistedVideoJob,
   upsertPersistedVideoJob,
 } from './video-generation-session'
@@ -79,5 +80,60 @@ describe('video generation session', () => {
 
     removePersistedVideoJob('job-1')
     assert.equal(loadPersistedVideoJobs(1).length, 0)
+  })
+
+  test('keeps multiple in-flight jobs so another video can start before the first finishes', () => {
+    const startedAt = Date.now()
+    upsertPersistedVideoJob({
+      id: 'job-1',
+      userId: 1,
+      taskId: 'task_one',
+      params,
+      status: 'processing',
+      startedAt,
+    })
+    upsertPersistedVideoJob({
+      id: 'job-2',
+      userId: 1,
+      taskId: 'task_two',
+      params: { ...params, prompt: 'a lantern rising' },
+      status: 'queued',
+      startedAt: startedAt + 1,
+    })
+
+    const jobs = loadPersistedVideoJobs(1)
+    assert.equal(jobs.length, 2)
+    assert.deepEqual(
+      jobs.map((job) => job.id).sort(),
+      ['job-1', 'job-2']
+    )
+  })
+
+  test('puts newer generating cards ahead of older ones in the gallery', () => {
+    const items = pendingVideoJobsToHistoryItems([
+      {
+        id: 'job-old',
+        userId: 1,
+        taskId: 'task_old',
+        params,
+        status: 'processing',
+        startedAt: 100,
+      },
+      {
+        id: 'job-new',
+        userId: 1,
+        taskId: 'task_new',
+        params: { ...params, prompt: 'a lantern rising' },
+        status: 'queued',
+        startedAt: 200,
+      },
+    ])
+
+    assert.deepEqual(
+      items.map((item) => item.id),
+      ['job-new', 'job-old']
+    )
+    assert.equal(items[0]?.prompt, 'a lantern rising')
+    assert.equal(items[1]?.prompt, 'a rainy street')
   })
 })

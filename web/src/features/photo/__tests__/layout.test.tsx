@@ -58,6 +58,7 @@ await i18next.use(initReactI18next).init({
         'Image generation': 'Image generation',
         'Video generation': 'Video generation',
         Untitled: 'Untitled',
+        Works: 'Works',
         'View video': 'View video',
         'Delete history': 'Delete history',
         '{{value}}s': '{{value}}s',
@@ -67,6 +68,11 @@ await i18next.use(initReactI18next).init({
 })
 const { PhotoModeRail } = await import('../components/photo-mode-rail')
 const { VideoWorksCard } = await import('../components/video-works-card')
+const {
+  WorksFeedHeader,
+  WorksLoadMoreSentinel,
+  WorksMasonry,
+} = await import('../components/works-masonry')
 const reactTestGlobals = globalThis as typeof globalThis & {
   IS_REACT_ACT_ENVIRONMENT?: boolean
 }
@@ -133,7 +139,7 @@ describe('video works card', () => {
             prompt: 'A lantern rising over an old town',
             model: 'MiniMax-H3',
             duration: '5',
-            aspectRatio: '9:16',
+            aspectRatio: '16:9',
             resolution: '768P',
             createdAt: 1,
           }}
@@ -152,8 +158,96 @@ describe('video works card', () => {
     assert.ok(container.textContent?.includes('MiniMax-H3'))
     const openButton = container.querySelector('button[aria-label="View video"]')
     assert.ok(openButton)
-    const cover = openButton?.parentElement
-    assert.equal(cover?.style.aspectRatio.replaceAll(/\s/g, ''), '9/16')
+    const cover = container.querySelector('[style*="aspect-ratio"]')
+    assert.ok(cover)
+    assert.equal(
+      (cover as HTMLElement).style.aspectRatio.replaceAll(/\s/g, ''),
+      '4/3'
+    )
+    assert.ok(cover.classList.contains('rounded-lg'))
+    assert.ok(cover.textContent?.includes('00:05'))
+    assert.ok(cover.textContent?.includes('MiniMax-H3'))
+    const title = [...container.querySelectorAll('p')].find((node) =>
+      node.textContent?.includes('A lantern rising over an old town')
+    )
+    assert.ok(title)
+    assert.equal(cover.contains(title), false)
+    assert.ok(title.classList.contains('line-clamp-2'))
+    assert.ok(openButton.contains(cover))
+    assert.ok(openButton.contains(title))
+
+    await act(async () => {
+      root.unmount()
+    })
+    container.remove()
+  })
+})
+
+describe('works feed header', () => {
+  test('renders Works as a section heading', async () => {
+    const container = document.createElement('div')
+    document.body.append(container)
+    const root = createRoot(container)
+    await act(async () => {
+      root.render(<WorksFeedHeader />)
+    })
+
+    const heading = container.querySelector('h2')
+    assert.equal(heading?.textContent, 'Works')
+
+    await act(async () => {
+      root.unmount()
+    })
+    container.remove()
+  })
+})
+
+describe('works masonry', () => {
+  test('arranges notes in a compact left-to-right column feed', async () => {
+    const container = document.createElement('div')
+    document.body.append(container)
+    const root = createRoot(container)
+    await act(async () => {
+      root.render(
+        <WorksMasonry
+          items={[{ id: 'a' }, { id: 'b' }]}
+          getItemKey={(item) => item.id}
+          getItemWeight={() => 1}
+          renderItem={(item) => <p>{item.id}</p>}
+        />
+      )
+    })
+
+    const feed = container.firstElementChild as HTMLElement
+    assert.equal(feed.classList.contains('flex'), true)
+    assert.equal(feed.classList.contains('items-start'), true)
+    assert.ok(feed.children.length >= 2)
+    const firstColumn = feed.children[0] as HTMLElement
+    assert.equal(firstColumn.classList.contains('flex-col'), true)
+
+    await act(async () => {
+      root.unmount()
+    })
+    container.remove()
+  })
+})
+
+describe('video works load more', () => {
+  test('shows a spinner while older works are being fetched', async () => {
+    const container = document.createElement('div')
+    document.body.append(container)
+    const root = createRoot(container)
+    await act(async () => {
+      root.render(
+        <WorksLoadMoreSentinel
+          enabled={false}
+          loading
+          onLoadMore={() => undefined}
+        />
+      )
+    })
+
+    assert.ok(container.querySelector('svg'))
 
     await act(async () => {
       root.unmount()

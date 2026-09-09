@@ -25,9 +25,9 @@ import type { VideoHistoryItem } from '@/features/video/types'
 
 import {
   coverFocusPosition,
-  mediaAspectRatioCss,
+  feedCoverAspectCss,
 } from '../lib/works-masonry'
-import { WorksCardMeta } from './works-card-meta'
+import { WorksCardCaption } from './works-card-meta'
 
 export function VideoWorksCard(props: {
   item: VideoHistoryItem
@@ -46,10 +46,13 @@ export function VideoWorksCard(props: {
   const [hovering, setHovering] = useState(false)
   const item = props.item
   const durationSeconds = Number(item.duration)
-  const durationLabel =
-    Number.isFinite(durationSeconds) && durationSeconds > 0
-      ? t('{{value}}s', { value: durationSeconds })
-      : null
+  let durationLabel: string | null = null
+  if (Number.isFinite(durationSeconds) && durationSeconds > 0) {
+    const total = Math.min(Math.round(durationSeconds), 5999)
+    const minutes = Math.floor(total / 60)
+    const rest = total % 60
+    durationLabel = `${String(minutes).padStart(2, '0')}:${String(rest).padStart(2, '0')}`
+  }
   const title = item.prompt.trim() || t('Untitled')
   const canPlay = Boolean(item.url) && !props.generating
 
@@ -86,12 +89,7 @@ export function VideoWorksCard(props: {
 
   return (
     <article ref={cardRef} className='group min-w-0'>
-      <div
-        className='bg-muted relative overflow-hidden rounded-xl'
-        style={{
-          aspectRatio: mediaAspectRatioCss(props.coverAspect ?? item.aspectRatio),
-        }}
-      >
+      <div className='relative'>
         <button
           type='button'
           disabled={!canPlay}
@@ -109,55 +107,81 @@ export function VideoWorksCard(props: {
             }
           }}
           onMouseLeave={() => setHovering(false)}
-          className='absolute inset-0 cursor-pointer text-left'
+          className='flex w-full min-w-0 cursor-pointer flex-col text-left'
           aria-label={t('View video')}
         >
-          {canPlay && inView ? (
-            <video
-              ref={videoRef}
-              src={item.url}
-              muted
-              loop
-              playsInline
-              preload='metadata'
-              onLoadedMetadata={(event) => {
-                const video = event.currentTarget
-                if (!video.videoWidth || !video.videoHeight) return
-                props.onAspectMeasured?.(
-                  item.id,
-                  `${video.videoWidth} / ${video.videoHeight}`
-                )
-              }}
-              className='h-full w-full object-cover'
-              style={{ objectPosition: coverFocusPosition(item.id) }}
-            />
-          ) : (
-            <div className='flex h-full w-full items-center justify-center'>
-              {props.generating ? (
-                <Loader2 className='text-muted-foreground size-7 animate-spin' />
-              ) : (
-                <Play className='text-muted-foreground size-7 fill-current' />
-              )}
-            </div>
-          )}
-          {canPlay && !hovering ? (
-            <span
-              aria-hidden='true'
-              className='pointer-events-none absolute top-2 right-2 text-white drop-shadow-[0_1px_2px_rgba(0,0,0,0.55)]'
-            >
-              <Play className='size-3.5 fill-current' />
-            </span>
-          ) : null}
-          {durationLabel && !hovering ? (
-            <span className='pointer-events-none absolute bottom-2 left-2 rounded bg-black/55 px-1.5 py-0.5 text-[10px] font-medium text-white'>
-              {durationLabel}
-            </span>
-          ) : null}
-          {props.generating ? (
-            <span className='pointer-events-none absolute inset-x-2 bottom-2 truncate text-center text-[11px] text-white/90'>
-              {t('Generating...')}
-            </span>
-          ) : null}
+          <div
+            className='bg-muted relative overflow-hidden rounded-lg'
+            style={{
+              aspectRatio: feedCoverAspectCss(
+                props.coverAspect ?? item.aspectRatio
+              ),
+            }}
+          >
+            {canPlay && inView ? (
+              <video
+                ref={videoRef}
+                src={item.url}
+                muted
+                loop
+                playsInline
+                preload='metadata'
+                onLoadedMetadata={(event) => {
+                  const video = event.currentTarget
+                  if (!video.videoWidth || !video.videoHeight) return
+                  props.onAspectMeasured?.(
+                    item.id,
+                    `${video.videoWidth} / ${video.videoHeight}`
+                  )
+                }}
+                className='h-full w-full object-cover'
+                style={{ objectPosition: coverFocusPosition(item.id) }}
+              />
+            ) : (
+              <div className='flex h-full w-full items-center justify-center'>
+                {props.generating ? (
+                  <Loader2 className='text-muted-foreground size-7 animate-spin' />
+                ) : (
+                  <Play className='text-muted-foreground size-7 fill-current' />
+                )}
+              </div>
+            )}
+            {canPlay && !hovering ? (
+              <span
+                aria-hidden='true'
+                className='pointer-events-none absolute inset-x-0 bottom-0 h-14 bg-gradient-to-t from-black/55 to-transparent'
+              />
+            ) : null}
+            <span className='pointer-events-none absolute inset-0 bg-black/0 transition-colors group-hover:bg-black/10' />
+            {item.model && !hovering ? (
+              <span className='pointer-events-none absolute top-1.5 right-1.5 max-w-[72%] truncate rounded bg-black/45 px-1.5 py-0.5 text-[10px] font-medium text-white'>
+                {item.model}
+              </span>
+            ) : null}
+            {canPlay && !hovering ? (
+              <span
+                aria-hidden='true'
+                className='pointer-events-none absolute bottom-1.5 left-2 text-white drop-shadow-[0_1px_2px_rgba(0,0,0,0.7)]'
+              >
+                <Play className='size-3 fill-current' />
+              </span>
+            ) : null}
+            {durationLabel && !hovering ? (
+              <span className='pointer-events-none absolute right-2 bottom-1.5 text-[11px] font-medium text-white tabular-nums drop-shadow-[0_1px_2px_rgba(0,0,0,0.7)]'>
+                {durationLabel}
+              </span>
+            ) : null}
+            {props.generating ? (
+              <span className='pointer-events-none absolute inset-x-2 bottom-2 truncate text-center text-[11px] text-white/90'>
+                {t('Generating...')}
+              </span>
+            ) : null}
+          </div>
+          <WorksCardCaption
+            title={title}
+            authorName={props.authorName}
+            authorInitials={props.authorInitials}
+          />
         </button>
         {props.onDelete && !props.generating ? (
           <button
@@ -175,14 +199,6 @@ export function VideoWorksCard(props: {
           </button>
         ) : null}
       </div>
-      <p className='mt-2 line-clamp-2 text-[13px] leading-snug font-semibold'>
-        {title}
-      </p>
-      <WorksCardMeta
-        authorName={props.authorName}
-        authorInitials={props.authorInitials}
-        meta={item.model}
-      />
     </article>
   )
 }

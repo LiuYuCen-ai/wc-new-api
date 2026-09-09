@@ -31,7 +31,13 @@ import {
 } from '../lib/dynamic-price'
 import { parseTags } from '../lib/filters'
 import { isTokenBasedModel } from '../lib/model-helpers'
-import { formatPrice, formatRequestPrice } from '../lib/price'
+import {
+  formatPrice,
+  formatRequestPrice,
+  formatResolutionDisplayPrice,
+  getResolutionPriceEntries,
+  isResolutionPricingModel,
+} from '../lib/price'
 import type { PricingModel, TokenUnit } from '../types'
 import { ModelBillingModeBadge } from './model-billing-mode-badge'
 import { ModelPerfBadge, type ModelPerfBadgeData } from './model-perf-badge'
@@ -127,6 +133,29 @@ export const ModelCard = memo(function ModelCard(props: ModelCardProps) {
         </span>
       )
     }
+  } else if (isResolutionPricingModel(props.model)) {
+    priceSummary = (
+      <>
+        {getResolutionPriceEntries(props.model).map((entry) => (
+          <span
+            key={entry.resolution}
+            className='text-muted-foreground whitespace-nowrap'
+          >
+            {entry.resolution}{' '}
+            <span className='text-foreground font-mono font-semibold'>
+              {formatResolutionDisplayPrice(
+                props.model,
+                entry.price,
+                showRechargePrice,
+                priceRate,
+                usdExchangeRate,
+                props.selectedGroup
+              )}
+            </span>
+          </span>
+        ))}
+      </>
+    )
   } else if (isTokenBased) {
     priceSummary = (
       <>

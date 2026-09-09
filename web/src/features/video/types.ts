@@ -20,9 +20,13 @@ export type VideoParams = {
   model: string
   prompt: string
   duration: string
-  aspectRatio: '16:9' | '9:16' | '1:1'
+  aspectRatio: string
   resolution: string
   referenceImageUrl?: string
+  referenceImageUrls?: string[]
+  referenceVideoUrl?: string
+  referenceVideoUrls?: string[]
+  referenceAudioUrl?: string
   endpointTypes?: string[]
 }
 
@@ -52,8 +56,12 @@ export type VideoHistoryItem = {
   prompt: string
   model: string
   duration: string
-  aspectRatio: '16:9' | '9:16' | '1:1'
+  aspectRatio: string
   resolution: string
   referenceImageUrl?: string
+  referenceImageUrls?: string[]
+  referenceVideoUrl?: string
+  referenceVideoUrls?: string[]
+  referenceAudioUrl?: string
   createdAt: number
 }

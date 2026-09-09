@@ -30,7 +30,7 @@ import {
   Sparkles,
   Timer,
 } from 'lucide-react'
-import { useMemo } from 'react'
+import React, { useMemo } from 'react'
 import { useTranslation } from 'react-i18next'
 
 import { CopyButton } from '@/components/copy-button'
@@ -68,7 +68,13 @@ import {
 } from '../lib/dynamic-price'
 import { parseTags } from '../lib/filters'
 import { getAvailableGroups, isTokenBasedModel } from '../lib/model-helpers'
-import { formatFixedPrice, formatGroupPrice } from '../lib/price'
+import {
+  formatFixedPrice,
+  formatGroupPrice,
+  formatResolutionGroupPrice,
+  getResolutionPriceEntries,
+  isResolutionPricingModel,
+} from '../lib/price'
 import type {
   ModelCapability,
   PriceType,
@@ -702,6 +708,40 @@ function PriceSection(props: {
     )
   }
 
+  const resolutionEntries = getResolutionPriceEntries(props.model)
+  if (isResolutionPricingModel(props.model)) {
+    return (
+      <section>
+        <SectionTitle>{t('Base Price')}</SectionTitle>
+        <div className='grid grid-cols-2 gap-2'>
+          {resolutionEntries.map((entry) => (
+            <div
+              key={entry.resolution}
+              className='bg-muted/20 rounded-lg border p-3'
+            >
+              <div className='text-muted-foreground text-xs'>
+                {entry.resolution}
+              </div>
+              <div className='text-foreground mt-1 font-mono text-base font-semibold tabular-nums'>
+                {formatResolutionGroupPrice(
+                  entry.price,
+                  baseGroupKey,
+                  props.showRechargePrice,
+                  props.priceRate,
+                  props.usdExchangeRate,
+                  baseGroupRatioMap
+                )}
+                <span className='text-muted-foreground/40 ml-1 text-xs font-normal'>
+                  / {t('request')}
+                </span>
+              </div>
+            </div>
+          ))}
+        </div>
+      </section>
+    )
+  }
+
   if (!isTokenBased) {
     return (
       <section>
@@ -1041,13 +1081,81 @@ function GroupPricingSection(props: {
       props.usdExchangeRate,
       props.groupRatio
     )
+  const resolutionEntries = getResolutionPriceEntries(props.model)
+  const isResolutionPriced = isResolutionPricingModel(props.model)
+
+  let priceColumns: {
+    id: string
+    header: string
+    className: string
+    cellClassName: string
+    cell: (group: string) => React.ReactNode
+  }[]
+  if (isResolutionPriced) {
+    priceColumns = resolutionEntries.map((entry) => ({
+      id: `resolution-${entry.resolution}`,
+      header: entry.resolution,
+      className: `${thClass} text-right`,
+      cellClassName: 'py-2.5 text-right font-mono',
+      cell: (group: string) =>
+        formatResolutionGroupPrice(
+          entry.price,
+          group,
+          showRechargePrice,
+          props.priceRate,
+          props.usdExchangeRate,
+          props.groupRatio
+        ),
+    }))
+  } else if (isTokenBased) {
+    priceColumns = [
+      {
+        id: 'input',
+        header: t('Input'),
+        className: `${thClass} text-right`,
+        cellClassName: 'py-2.5 text-right font-mono',
+        cell: (group) => renderGroupPrice(group, 'input'),
+      },
+      {
+        id: 'output',
+        header: t('Output'),
+        className: `${thClass} text-right`,
+        cellClassName: 'py-2.5 text-right font-mono',
+        cell: (group) => renderGroupPrice(group, 'output'),
+      },
+      ...extraPriceTypes.map((ep) => ({
+        id: ep.type,
+        header: ep.label,
+        className: `${thClass} text-right`,
+        cellClassName: 'py-2.5 text-right font-mono',
+        cell: (group: string) => renderGroupPrice(group, ep.type),
+      })),
+    ]
+  } else {
+    priceColumns = [
+      {
+        id: 'price',
+        header: t('Price'),
+        className: `${thClass} text-right`,
+        cellClassName: 'py-2.5 text-right font-mono',
+        cell: renderFixedGroupPrice,
+      },
+    ]
+  }
+
+  let priceFootnote: string | null = null
+  if (isResolutionPriced) {
+    priceFootnote = `${t('Prices shown per')} ${t('request')}`
+  } else if (isTokenBased) {
+    priceFootnote = `${t('Prices shown per')} ${tokenUnitLabel} tokens`
+  }
 
   return (
     <section>
       <SectionTitle>{t('Pricing by Group')}</SectionTitle>
       <AutoGroupChain model={props.model} autoGroups={props.autoGroups} />
       <StaticDataTable
-        className='-mx-4 rounded-none border-0 sm:mx-0'
+        className='-mx-4 overflow-x-auto rounded-none border-0 sm:mx-0'
         tableClassName='text-sm'
         headerRowClassName='hover:bg-transparent'
         data={availableGroups}
@@ -1067,47 +1175,15 @@ function GroupPricingSection(props: {
             cellClassName: 'text-muted-foreground py-2.5 font-mono',
             cell: (group) => `${props.groupRatio[group] || 1}x`,
           },
-          ...(isTokenBased
-            ? [
-                {
-                  id: 'input',
-                  header: t('Input'),
-                  className: `${thClass} text-right`,
-                  cellClassName: 'py-2.5 text-right font-mono',
-                  cell: (group: string) => renderGroupPrice(group, 'input'),
-                },
-                {
-                  id: 'output',
-                  header: t('Output'),
-                  className: `${thClass} text-right`,
-                  cellClassName: 'py-2.5 text-right font-mono',
-                  cell: (group: string) => renderGroupPrice(group, 'output'),
-                },
-                ...extraPriceTypes.map((ep) => ({
-                  id: ep.type,
-                  header: ep.label,
-                  className: `${thClass} text-right`,
-                  cellClassName: 'py-2.5 text-right font-mono',
-                  cell: (group: string) => renderGroupPrice(group, ep.type),
-                })),
-              ]
-            : [
-                {
-                  id: 'price',
-                  header: t('Price'),
-                  className: `${thClass} text-right`,
-                  cellClassName: 'py-2.5 text-right font-mono',
-                  cell: renderFixedGroupPrice,
-                },
-              ]),
+          ...priceColumns,
         ]}
       />
       <div className='-mx-4 sm:mx-0'>
-        {isTokenBased && (
+        {priceFootnote ? (
           <p className='text-muted-foreground/40 mt-1.5 px-4 text-[10px] sm:px-0'>
-            {t('Prices shown per')} {tokenUnitLabel} tokens
+            {priceFootnote}
           </p>
-        )}
+        ) : null}
       </div>
     </section>
   )

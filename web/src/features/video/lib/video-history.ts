@@ -16,6 +16,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
+import { normalizeVideoAspectRatio, videoReferenceUrls } from './video-request'
 import type { VideoHistoryItem, VideoTaskStatus } from '../types'
 
 export type UserVideoTask = {
@@ -45,9 +46,10 @@ const VIDEO_ACTIONS = new Set([
 ])
 
 const VIDEO_MODEL_HINT =
-  /sora|hailuo|seedance|kling|jimeng|vidu|runway|luma|pika|minimax-h3|t2v|i2v|s2v/
+  /sora|hailuo|seedance|kling|jimeng|vidu|runway|luma|pika|minimax|t2v|i2v|s2v/
 
-const VIDEO_HISTORY_LIMIT = 50
+export const VIDEO_TASK_PAGE_SIZE = 50
+const VIDEO_HISTORY_CACHE_LIMIT = 50
 
 function looksLikeMediaUrl(value?: string): boolean {
   if (!value) return false
@@ -102,6 +104,17 @@ export function toVideoHistoryItem(task: UserVideoTask): VideoHistoryItem | null
     recordId,
     ...collectTaskAliasIds(task.data),
   ])
+  const referenceImageUrls = extractReferenceMediaUrls(task, [
+    'reference_images',
+    'reference_image',
+    'first_frame_image',
+    'image',
+  ])
+  const referenceVideoUrls = extractReferenceMediaUrls(task, [
+    'video_urls',
+    'video_url',
+  ])
+  const referenceAudioUrl = extractReferenceMediaUrl(task, ['audio_url'])
   return {
     id: taskId,
     requestId: taskId,
@@ -114,6 +127,9 @@ export function toVideoHistoryItem(task: UserVideoTask): VideoHistoryItem | null
     duration: extractVideoDuration(task),
     aspectRatio: extractVideoAspectRatio(task),
     resolution: extractVideoResolution(task),
+    ...(referenceImageUrls.length > 0 ? { referenceImageUrls } : {}),
+    ...(referenceVideoUrls.length > 0 ? { referenceVideoUrls } : {}),
+    ...(referenceAudioUrl ? { referenceAudioUrl } : {}),
     createdAt: createdAt > 1_000_000_000_000 ? createdAt : createdAt * 1000,
   }
 }
@@ -164,9 +180,24 @@ export function mergeVideoHistory(
     add(item)
   }
 
-  return [...new Set(byKey.values())]
-    .sort((a, b) => b.createdAt - a.createdAt)
-    .slice(0, VIDEO_HISTORY_LIMIT)
+  return [...new Set(byKey.values())].sort(
+    (a, b) => b.createdAt - a.createdAt
+  )
+}
+
+export function cacheVideoHistory(
+  items: VideoHistoryItem[]
+): VideoHistoryItem[] {
+  return items.slice(0, VIDEO_HISTORY_CACHE_LIMIT)
+}
+
+export function hasMoreTaskPages(
+  page: number,
+  pageSize: number,
+  total: number
+): boolean {
+  if (page < 1 || pageSize < 1 || total < 1) return false
+  return page * pageSize < total
 }
 
 const LOCAL_PENDING_MS = 2 * 60 * 1000
@@ -302,7 +333,19 @@ function mergeVideoHistoryItems(
     aspectRatio: extra.aspectRatio || preferred.aspectRatio,
     resolution: preferred.resolution || extra.resolution,
     url: preferred.url || extra.url,
-    referenceImageUrl: preferred.referenceImageUrl || extra.referenceImageUrl,
+    referenceImageUrls: mergedReferenceUrls(
+      preferred.referenceImageUrls,
+      extra.referenceImageUrls,
+      preferred.referenceImageUrl,
+      extra.referenceImageUrl
+    ),
+    referenceVideoUrls: mergedReferenceUrls(
+      preferred.referenceVideoUrls,
+      extra.referenceVideoUrls,
+      preferred.referenceVideoUrl,
+      extra.referenceVideoUrl
+    ),
+    referenceAudioUrl: preferred.referenceAudioUrl || extra.referenceAudioUrl,
     recordId: preferred.recordId || extra.recordId,
     deleteIds: uniqueVideoIds([
       ...(preferred.deleteIds ?? []),
@@ -356,16 +399,19 @@ function extractVideoDuration(task: UserVideoTask): string {
   return ''
 }
 
-function extractVideoAspectRatio(
-  task: UserVideoTask
-): VideoHistoryItem['aspectRatio'] {
+function extractVideoAspectRatio(task: UserVideoTask): string {
   const data = parseRecord(task.data)
+  const nestedTask = parseRecord(data?.task)
   const metadata = parseRecord(data?.metadata)
   const value = String(
-    metadata?.ratio ?? metadata?.aspect_ratio ?? data?.aspect_ratio ?? ''
+    metadata?.ratio ??
+      metadata?.aspect_ratio ??
+      data?.ratio ??
+      data?.aspect_ratio ??
+      nestedTask?.ratio ??
+      ''
   )
-  if (value === '9:16' || value === '1:1' || value === '16:9') return value
-  return '16:9'
+  return normalizeVideoAspectRatio(value) ?? '16:9'
 }
 
 function extractVideoResolution(task: UserVideoTask): string {
@@ -373,4 +419,29 @@ function extractVideoResolution(task: UserVideoTask): string {
   const metadata = parseRecord(data?.metadata)
   const value = metadata?.resolution ?? data?.resolution
   return typeof value === 'string' ? value : ''
+}
+
+function extractReferenceMediaUrl(
+  task: UserVideoTask,
+  keys: string[]
+): string | undefined {
+  return extractReferenceMediaUrls(task, keys)[0]
+}
+
+function extractReferenceMediaUrls(
+  task: UserVideoTask,
+  keys: string[]
+): string[] {
+  const data = parseRecord(task.data)
+  const metadata = parseRecord(data?.metadata)
+  return videoReferenceUrls(
+    ...keys.map((key) => metadata?.[key] ?? data?.[key])
+  )
+}
+
+function mergedReferenceUrls(
+  ...values: Array<string[] | string | undefined>
+): string[] | undefined {
+  const urls = videoReferenceUrls(...values)
+  return urls.length > 0 ? urls : undefined
 }

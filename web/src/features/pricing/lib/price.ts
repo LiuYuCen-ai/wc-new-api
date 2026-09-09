@@ -270,3 +270,104 @@ export function formatRequestPrice(
     abbreviate: false,
   })
 }
+
+const RESOLUTION_SORT_ORDER = [
+  '360P',
+  '480P',
+  '512P',
+  '540P',
+  '720P',
+  '768P',
+  '1080P',
+  '2K',
+  '4K',
+] as const
+
+export type ResolutionPriceEntry = {
+  resolution: string
+  price: number
+}
+
+function resolutionSortIndex(label: string): number {
+  const index = (RESOLUTION_SORT_ORDER as readonly string[]).indexOf(label)
+  if (index === -1) return RESOLUTION_SORT_ORDER.length
+  return index
+}
+
+export function getResolutionPriceEntries(
+  model: PricingModel
+): ResolutionPriceEntry[] {
+  const prices = model.resolution_price
+  if (!prices) return []
+
+  const entries: ResolutionPriceEntry[] = []
+  for (const [resolution, price] of Object.entries(prices)) {
+    const label = resolution.trim()
+    if (!label || !Number.isFinite(price) || price < 0) continue
+    entries.push({ resolution: label, price })
+  }
+
+  return [...entries].sort((left, right) => {
+    const leftIndex = resolutionSortIndex(left.resolution)
+    const rightIndex = resolutionSortIndex(right.resolution)
+    if (leftIndex !== rightIndex) return leftIndex - rightIndex
+    return left.resolution.localeCompare(right.resolution)
+  })
+}
+
+export function isResolutionPricingModel(model: PricingModel): boolean {
+  return (
+    model.billing_mode === 'resolution' &&
+    getResolutionPriceEntries(model).length > 0
+  )
+}
+
+function formatUsdRequestAmount(
+  priceInUSD: number,
+  showWithRecharge: boolean,
+  priceRate: number,
+  usdExchangeRate: number
+): string {
+  return formatCurrencyFromUSD(
+    applyRechargeRate(priceInUSD, showWithRecharge, priceRate, usdExchangeRate),
+    {
+      digitsLarge: 4,
+      digitsSmall: 4,
+      abbreviate: false,
+    }
+  )
+}
+
+export function formatResolutionDisplayPrice(
+  model: PricingModel,
+  usdPrice: number,
+  showWithRecharge = false,
+  priceRate = 1,
+  usdExchangeRate = 1,
+  selectedGroup?: string
+): string {
+  const displayGroupRatio = getDisplayGroupRatio(model, selectedGroup)
+  return formatUsdRequestAmount(
+    usdPrice * displayGroupRatio,
+    showWithRecharge,
+    priceRate,
+    usdExchangeRate
+  )
+}
+
+export function formatResolutionGroupPrice(
+  usdPrice: number,
+  group: string,
+  showWithRecharge = false,
+  priceRate = 1,
+  usdExchangeRate = 1,
+  groupRatio: Record<string, number>
+): string {
+  const ratio = getConfiguredGroupRatio(groupRatio, group)
+  return formatUsdRequestAmount(
+    usdPrice * ratio,
+    showWithRecharge,
+    priceRate,
+    usdExchangeRate
+  )
+}

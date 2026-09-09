@@ -24,6 +24,7 @@ import {
   ChevronDown,
   Loader2,
   Plus,
+  X,
 } from 'lucide-react'
 
 import { Button } from '@/components/ui/button'
@@ -35,12 +36,17 @@ import {
   PopoverTrigger,
 } from '@/components/ui/popover'
 import { Textarea } from '@/components/ui/textarea'
-import { cn } from '@/lib/utils'
+import { cn, randomUUID } from '@/lib/utils'
 
 import {
   defaultVideoDuration,
+  MAX_VIDEO_REFERENCE_IMAGES,
+  MAX_VIDEO_REFERENCE_VIDEOS,
+  normalizeVideoAspectRatio,
   snapVideoResolution,
+  videoReferenceUrls,
 } from '@/features/video/lib/video-request'
+import { pendingVideoJobsToHistoryItems } from '@/features/video/lib/video-generation-session'
 import type {
   VideoHistoryItem,
   VideoParams,
@@ -50,7 +56,7 @@ import { useVideoGenerationStore } from '@/stores/video-generation-store'
 import { useUserDisplay } from '@/hooks/use-user-display'
 import { usePhotoModels } from '../hooks/use-photo-models'
 import { snapPhotoSize } from '../lib/photo-models'
-import { masonryItemWeight } from '../lib/works-masonry'
+import { feedCoverWeight } from '../lib/works-masonry'
 import {
   composerChipClass,
   ComposerModelList,
@@ -59,7 +65,11 @@ import {
 } from './composer-select'
 import { VideoNoteViewer } from './video-note-viewer'
 import { VideoWorksCard } from './video-works-card'
-import { WorksMasonry } from './works-masonry'
+import {
+  WorksFeedHeader,
+  WorksLoadMoreSentinel,
+  WorksMasonry,
+} from './works-masonry'
 
 const DEFAULT_PARAMS: VideoParams = {
   model: '',
@@ -71,6 +81,8 @@ const DEFAULT_PARAMS: VideoParams = {
 
 const MAX_VIDEO_DURATION = 15
 const DURATION_OPTIONS = ['6', '10', '15'] as const
+type ReferenceKind = 'image' | 'video' | 'audio'
+type ReferenceField = { id: string; url: string }
 
 const VIDEO_PROMPT_SUGGESTIONS = [
   'A paper boat floating down a rainy city street at night',
@@ -78,11 +90,14 @@ const VIDEO_PROMPT_SUGGESTIONS = [
   'Lanterns rising into the night sky over an ancient town',
 ] as const
 
-const ASPECT_RATIOS = [
+const ASPECT_RATIOS: { value: string; label: string; hint?: string }[] = [
   { value: '16:9', label: '16:9', hint: 'Landscape' },
   { value: '9:16', label: '9:16', hint: 'Portrait' },
   { value: '1:1', label: '1:1', hint: 'Square' },
-] as const
+  { value: '4:3', label: '4:3' },
+  { value: '3:4', label: '3:4' },
+  { value: '21:9', label: '21:9' },
+]
 
 export function VideoPanel() {
   const { t } = useTranslation()
@@ -92,18 +107,26 @@ export function VideoPanel() {
   const [params, setParams] = useState<VideoParams>(DEFAULT_PARAMS)
   const history = useVideoGenerationStore((state) => state.history)
   const historyLoading = useVideoGenerationStore((state) => state.historyLoading)
-  const pendingJob = useVideoGenerationStore((state) => state.pendingJob)
+  const historyLoadingMore = useVideoGenerationStore(
+    (state) => state.historyLoadingMore
+  )
+  const historyHasMore = useVideoGenerationStore((state) => state.historyHasMore)
+  const pendingJobs = useVideoGenerationStore((state) => state.pendingJobs)
   const viewerId = useVideoGenerationStore((state) => state.viewerId)
   const loadHistory = useVideoGenerationStore((state) => state.loadHistory)
+  const loadMoreHistory = useVideoGenerationStore((state) => state.loadMoreHistory)
   const resetForUser = useVideoGenerationStore((state) => state.resetForUser)
   const startGeneration = useVideoGenerationStore((state) => state.startGeneration)
   const deleteHistoryItem = useVideoGenerationStore(
     (state) => state.deleteHistoryItem
   )
   const setViewerId = useVideoGenerationStore((state) => state.setViewerId)
-  const loading = Boolean(pendingJob)
+  const [submitting, setSubmitting] = useState(false)
   const [aspectById, setAspectById] = useState<Record<string, string>>({})
-  const [referenceEnabled, setReferenceEnabled] = useState(false)
+  const [referenceMenuOpen, setReferenceMenuOpen] = useState(false)
+  const [imageFields, setImageFields] = useState<ReferenceField[]>([])
+  const [videoFields, setVideoFields] = useState<ReferenceField[]>([])
+  const [aspectDraft, setAspectDraft] = useState(DEFAULT_PARAMS.aspectRatio)
   const {
     models,
     isLoading: modelsLoading,
@@ -157,19 +180,41 @@ export function VideoPanel() {
     void loadHistory(user.id)
   }, [bootstrapState, loadHistory, resetForUser, user?.id])
 
-  const handleReferenceToggle = () => {
-    setReferenceEnabled((enabled) => {
-      const next = !enabled
-      if (!next) {
-        setParams((prev) => ({ ...prev, referenceImageUrl: undefined }))
+  const showImageRef = imageFields.length > 0
+  const showVideoRef = videoFields.length > 0
+  const showAudioRef = params.referenceAudioUrl !== undefined
+  const hasAnyReference = showImageRef || showVideoRef || showAudioRef
+
+  const addReference = (kind: ReferenceKind) => {
+    if (kind === 'image') {
+      if (imageFields.length >= MAX_VIDEO_REFERENCE_IMAGES) {
+        toast.error(
+          t('Up to {{max}} images can be attached.', {
+            max: MAX_VIDEO_REFERENCE_IMAGES,
+          })
+        )
+        return
       }
-      return next
-    })
+      setImageFields((prev) => [...prev, { id: randomUUID(), url: '' }])
+    } else if (kind === 'video') {
+      if (videoFields.length >= MAX_VIDEO_REFERENCE_VIDEOS) {
+        toast.error(
+          t('Up to {{max}} videos can be attached.', {
+            max: MAX_VIDEO_REFERENCE_VIDEOS,
+          })
+        )
+        return
+      }
+      setVideoFields((prev) => [...prev, { id: randomUUID(), url: '' }])
+    } else if (params.referenceAudioUrl === undefined) {
+      update('referenceAudioUrl', '')
+    }
+    setReferenceMenuOpen(false)
   }
 
   const handleSubmit = async (e?: FormEvent) => {
     e?.preventDefault()
-    if (loading) return
+    if (submitting) return
     if (!user?.id) {
       toast.error(
         t('Sign in to save and view your generation history.')
@@ -184,9 +229,23 @@ export function VideoPanel() {
       toast.error(t('Please enter a prompt'))
       return
     }
-    const referenceImageUrl = params.referenceImageUrl?.trim()
-    if (referenceEnabled && !referenceImageUrl) {
+    const referenceImageUrls = videoReferenceUrls(
+      imageFields.map((field) => field.url)
+    )
+    const referenceVideoUrls = videoReferenceUrls(
+      videoFields.map((field) => field.url)
+    )
+    const referenceAudioUrl = params.referenceAudioUrl?.trim()
+    if (imageFields.some((field) => !field.url.trim())) {
       toast.error(t('Please enter a reference image URL'))
+      return
+    }
+    if (videoFields.some((field) => !field.url.trim())) {
+      toast.error(t('Please enter a reference video URL'))
+      return
+    }
+    if (showAudioRef && !referenceAudioUrl) {
+      toast.error(t('Please enter a reference audio URL'))
       return
     }
 
@@ -209,17 +268,35 @@ export function VideoPanel() {
       duration = String(parsed)
     }
 
+    const aspectRatio = normalizeVideoAspectRatio(params.aspectRatio)
+    if (!aspectRatio) {
+      toast.error(t('Enter a ratio like 16:9'))
+      return
+    }
+
     const requestParams: VideoParams = {
       ...params,
       duration,
+      aspectRatio,
       resolution: snapVideoResolution(params.model, params.resolution),
-      referenceImageUrl: referenceEnabled ? referenceImageUrl : undefined,
+      referenceImageUrls:
+        referenceImageUrls.length > 0 ? referenceImageUrls : undefined,
+      referenceVideoUrls:
+        referenceVideoUrls.length > 0 ? referenceVideoUrls : undefined,
+      referenceImageUrl: undefined,
+      referenceVideoUrl: undefined,
+      referenceAudioUrl: showAudioRef ? referenceAudioUrl : undefined,
       endpointTypes:
         models.find((model) => model.id === params.model)?.endpointTypes ??
         params.endpointTypes,
     }
 
-    await startGeneration(requestParams, user.id)
+    setSubmitting(true)
+    try {
+      await startGeneration(requestParams, user.id)
+    } finally {
+      setSubmitting(false)
+    }
   }
 
   const applyHistoryItem = (item: VideoHistoryItem) => {
@@ -230,35 +307,57 @@ export function VideoPanel() {
       duration: item.duration,
       aspectRatio: item.aspectRatio,
       resolution: item.resolution,
-      referenceImageUrl: item.referenceImageUrl,
+      referenceImageUrls: videoReferenceUrls(
+        item.referenceImageUrls,
+        item.referenceImageUrl
+      ),
+      referenceVideoUrls: videoReferenceUrls(
+        item.referenceVideoUrls,
+        item.referenceVideoUrl
+      ),
+      referenceImageUrl: undefined,
+      referenceVideoUrl: undefined,
+      referenceAudioUrl: item.referenceAudioUrl,
     }))
-    setReferenceEnabled(item.referenceImageUrl ? true : false)
+    setImageFields(
+      videoReferenceUrls(
+        item.referenceImageUrls,
+        item.referenceImageUrl
+      ).map((url) => ({ id: randomUUID(), url }))
+    )
+    setVideoFields(
+      videoReferenceUrls(
+        item.referenceVideoUrls,
+        item.referenceVideoUrl
+      ).map((url) => ({ id: randomUUID(), url }))
+    )
+    setAspectDraft(item.aspectRatio)
     if (!models.some((model) => model.id === item.model)) {
       addCustomModel(item.model)
     }
   }
 
-  const galleryItems = useMemo((): VideoHistoryItem[] => {
-    if (!pendingJob) return history
-    return [
-      {
-        id: '__generating__',
-        requestId: '__generating__',
-        status: pendingJob.status,
-        prompt: pendingJob.params.prompt,
-        model: pendingJob.params.model,
-        duration:
-          pendingJob.params.duration ||
-          String(defaultVideoDuration(pendingJob.params.model)),
-        aspectRatio: pendingJob.params.aspectRatio,
-        resolution: pendingJob.params.resolution,
-        createdAt: pendingJob.startedAt,
-      },
-      ...history,
-    ]
-  }, [history, pendingJob])
+  const pendingIds = useMemo(
+    () => new Set(pendingJobs.map((job) => job.id)),
+    [pendingJobs]
+  )
+  const galleryItems = useMemo(
+    () => [...pendingVideoJobsToHistoryItems(pendingJobs), ...history],
+    [history, pendingJobs]
+  )
 
   const [durationMenuOpen, setDurationMenuOpen] = useState(false)
+
+  const applyAspectRatio = (value: string, close?: () => void) => {
+    const next = normalizeVideoAspectRatio(value)
+    if (!next) {
+      toast.error(t('Enter a ratio like 16:9'))
+      return
+    }
+    update('aspectRatio', next)
+    setAspectDraft(next)
+    close?.()
+  }
   const durationUnit = t('{{value}}s', { value: '' }).trim()
   const modelLabel =
     selectedModel?.label || (modelsLoading ? t('Loading') : t('Model'))
@@ -308,20 +407,43 @@ export function VideoPanel() {
           aria-label='video-prompt-bar'
         >
           <div className='flex items-start gap-2'>
-            <Button
-              type='button'
-              variant='outline'
-              size='icon'
-              className={cn(
-                'text-muted-foreground mt-0.5 size-11 shrink-0 rounded-2xl',
-                referenceEnabled && 'border-primary text-foreground'
-              )}
-              aria-label={t('Reference image')}
-              aria-pressed={referenceEnabled}
-              onClick={handleReferenceToggle}
-            >
-              <Plus className='size-5' />
-            </Button>
+            <Popover open={referenceMenuOpen} onOpenChange={setReferenceMenuOpen}>
+              <PopoverTrigger
+                type='button'
+                className={cn(
+                  'inline-flex size-11 shrink-0 items-center justify-center rounded-2xl border bg-background text-muted-foreground transition-colors hover:bg-muted hover:text-foreground mt-0.5',
+                  hasAnyReference && 'border-primary text-foreground'
+                )}
+                aria-label={t('Add reference')}
+                aria-pressed={hasAnyReference}
+              >
+                <Plus className='size-5' />
+              </PopoverTrigger>
+              <PopoverContent align='start' side='bottom' className='w-56 gap-1 p-1.5'>
+                <ComposerOption
+                  selected={showImageRef}
+                  title={t('Image')}
+                  hint={t('Up to {{max}} images can be attached.', {
+                    max: MAX_VIDEO_REFERENCE_IMAGES,
+                  })}
+                  onClick={() => addReference('image')}
+                />
+                <ComposerOption
+                  selected={showVideoRef}
+                  title={t('Video')}
+                  hint={t('Up to {{max}} videos can be attached.', {
+                    max: MAX_VIDEO_REFERENCE_VIDEOS,
+                  })}
+                  onClick={() => addReference('video')}
+                />
+                <ComposerOption
+                  selected={showAudioRef}
+                  title={t('Audio')}
+                  hint={t('Reference audio')}
+                  onClick={() => addReference('audio')}
+                />
+              </PopoverContent>
+            </Popover>
             <Label htmlFor='video-prompt' className='sr-only'>
               {t('Prompt')}
             </Label>
@@ -341,18 +463,99 @@ export function VideoPanel() {
             />
           </div>
 
-          {referenceEnabled ? (
-            <Input
-              type='url'
-              value={params.referenceImageUrl ?? ''}
-              onChange={(e) => {
-                const value = e.target.value
-                update('referenceImageUrl', value || undefined)
-              }}
-              placeholder='https://example.com/image.jpg'
-              aria-label={t('Reference image')}
-              className='h-9'
-            />
+          {(showImageRef || showVideoRef || showAudioRef) ? (
+            <div className='space-y-2'>
+              {imageFields.map((field) => (
+                <div key={field.id} className='flex items-center gap-2'>
+                  <Input
+                    type='url'
+                    value={field.url}
+                    onChange={(event) => {
+                      const value = event.target.value
+                      setImageFields((prev) =>
+                        prev.map((item) =>
+                          item.id === field.id ? { ...item, url: value } : item
+                        )
+                      )
+                    }}
+                    placeholder='https://example.com/image.jpg'
+                    aria-label={t('Reference image')}
+                    className='h-9'
+                  />
+                  <Button
+                    type='button'
+                    variant='ghost'
+                    size='icon'
+                    className='size-8 shrink-0'
+                    aria-label={t('Remove')}
+                    onClick={() =>
+                      setImageFields((prev) =>
+                        prev.filter((item) => item.id !== field.id)
+                      )
+                    }
+                  >
+                    <X className='size-4' />
+                  </Button>
+                </div>
+              ))}
+              {videoFields.map((field) => (
+                <div key={field.id} className='flex items-center gap-2'>
+                  <Input
+                    type='url'
+                    value={field.url}
+                    onChange={(event) => {
+                      const value = event.target.value
+                      setVideoFields((prev) =>
+                        prev.map((item) =>
+                          item.id === field.id ? { ...item, url: value } : item
+                        )
+                      )
+                    }}
+                    placeholder='https://example.com/video.mp4'
+                    aria-label={t('Reference video')}
+                    className='h-9'
+                  />
+                  <Button
+                    type='button'
+                    variant='ghost'
+                    size='icon'
+                    className='size-8 shrink-0'
+                    aria-label={t('Remove')}
+                    onClick={() =>
+                      setVideoFields((prev) =>
+                        prev.filter((item) => item.id !== field.id)
+                      )
+                    }
+                  >
+                    <X className='size-4' />
+                  </Button>
+                </div>
+              ))}
+              {showAudioRef ? (
+                <div className='flex items-center gap-2'>
+                  <Input
+                    type='url'
+                    value={params.referenceAudioUrl ?? ''}
+                    onChange={(event) => {
+                      update('referenceAudioUrl', event.target.value)
+                    }}
+                    placeholder='https://example.com/audio.mp3'
+                    aria-label={t('Reference audio')}
+                    className='h-9'
+                  />
+                  <Button
+                    type='button'
+                    variant='ghost'
+                    size='icon'
+                    className='size-8 shrink-0'
+                    aria-label={t('Remove')}
+                    onClick={() => update('referenceAudioUrl', undefined)}
+                  >
+                    <X className='size-4' />
+                  </Button>
+                </div>
+              ) : null}
+            </div>
           ) : null}
 
           <div className='flex flex-wrap items-center justify-between gap-2'>
@@ -395,20 +598,50 @@ export function VideoPanel() {
                 label={params.aspectRatio}
                 ariaLabel={t('Aspect ratio')}
               >
-                {(close) =>
-                  ASPECT_RATIOS.map((item) => (
-                    <ComposerOption
-                      key={item.value}
-                      selected={item.value === params.aspectRatio}
-                      title={item.label}
-                      hint={t(item.hint)}
-                      onClick={() => {
-                        update('aspectRatio', item.value)
-                        close()
-                      }}
-                    />
-                  ))
-                }
+                {(close) => (
+                  <>
+                    {ASPECT_RATIOS.map((item) => (
+                      <ComposerOption
+                        key={item.value}
+                        selected={item.value === params.aspectRatio}
+                        title={item.label}
+                        hint={item.hint ? t(item.hint) : undefined}
+                        onClick={() => {
+                          update('aspectRatio', item.value)
+                          setAspectDraft(item.value)
+                          close()
+                        }}
+                      />
+                    ))}
+                    <div className='space-y-1 px-2.5 py-2'>
+                      <Label htmlFor='video-aspect-custom' className='text-xs'>
+                        {t('Custom')}
+                      </Label>
+                      <Input
+                        id='video-aspect-custom'
+                        value={aspectDraft}
+                        placeholder={t('For example 4:5')}
+                        aria-label={t('Custom')}
+                        onChange={(event) => {
+                          const value = event.target.value
+                          setAspectDraft(value)
+                          const next = normalizeVideoAspectRatio(value)
+                          if (next) update('aspectRatio', next)
+                        }}
+                        onKeyDown={(event) => {
+                          if (event.key !== 'Enter') return
+                          event.preventDefault()
+                          applyAspectRatio(aspectDraft, close)
+                        }}
+                        onBlur={() => {
+                          if (normalizeVideoAspectRatio(aspectDraft)) {
+                            applyAspectRatio(aspectDraft)
+                          }
+                        }}
+                      />
+                    </div>
+                  </>
+                )}
               </ComposerSelect>
 
               <ComposerSelect
@@ -516,11 +749,11 @@ export function VideoPanel() {
             <Button
               type='submit'
               size='icon'
-              disabled={loading}
+              disabled={submitting}
               className='size-10 shrink-0 rounded-full'
               aria-label={t('Generate video')}
             >
-              {loading ? (
+              {submitting ? (
                 <Loader2 className='size-4 animate-spin' />
               ) : (
                 <ArrowUp className='size-4' />
@@ -543,15 +776,11 @@ export function VideoPanel() {
         </div>
       </div>
 
-      <div className='space-y-4'>
-        <div className='flex items-center gap-2'>
-          <span className='bg-muted rounded-full px-3 py-1 text-sm font-medium'>
-            {t('Works')}
-          </span>
-        </div>
+      <div className='flex flex-col gap-3'>
+        <WorksFeedHeader />
 
         {historyLoading && history.length === 0 ? (
-          <div className='bg-muted relative aspect-[3/4] max-w-56 overflow-hidden rounded-xl'>
+          <div className='bg-muted relative aspect-[3/4] max-w-56 overflow-hidden rounded-lg'>
             <div className='bg-background/35 absolute inset-0 flex items-center justify-center'>
               <Loader2 className='text-primary size-6 animate-spin' />
             </div>
@@ -563,7 +792,7 @@ export function VideoPanel() {
             items={galleryItems}
             getItemKey={(item) => item.id}
             getItemWeight={(item) =>
-              masonryItemWeight(aspectById[item.id] ?? item.aspectRatio)
+              feedCoverWeight(aspectById[item.id] ?? item.aspectRatio)
             }
             renderItem={(item) => (
               <VideoWorksCard
@@ -571,10 +800,10 @@ export function VideoPanel() {
                 authorName={author.displayName}
                 authorInitials={author.initials}
                 coverAspect={aspectById[item.id]}
-                generating={item.id === '__generating__'}
+                generating={pendingIds.has(item.id)}
                 onOpen={(opened) => setViewerId(opened.id)}
                 onDelete={
-                  item.id === '__generating__' ? undefined : deleteHistoryItem
+                  pendingIds.has(item.id) ? undefined : deleteHistoryItem
                 }
                 onAspectMeasured={(id, ratio) => {
                   setAspectById((current) => {
@@ -586,7 +815,19 @@ export function VideoPanel() {
             )}
           />
         ) : null}
-        {!historyLoading && galleryItems.length === 0 ? (
+        {user?.id ? (
+          <WorksLoadMoreSentinel
+            enabled={
+              historyHasMore && !historyLoading && !historyLoadingMore
+            }
+            loading={historyLoadingMore}
+            onLoadMore={loadMoreHistory}
+          />
+        ) : null}
+        {!historyLoading &&
+        !historyLoadingMore &&
+        !historyHasMore &&
+        galleryItems.length === 0 ? (
           <div className='text-muted-foreground py-10 text-center text-sm'>
             {user?.id
               ? t('No history yet')

@@ -28,6 +28,56 @@ export type VideoModelFamily =
   | 'generic'
 
 const HAILUO_DURATIONS = [6, 10] as const
+const ASPECT_RATIO_PATTERN = /^(\d{1,4})\s*[:/x×]\s*(\d{1,4})$/i
+const MAX_ASPECT_SIDE = 100
+
+export const MAX_VIDEO_REFERENCE_IMAGES = 9
+export const MAX_VIDEO_REFERENCE_VIDEOS = 3
+
+export function videoReferenceUrls(...values: unknown[]): string[] {
+  const urls: string[] = []
+  const seen = new Set<string>()
+  const add = (value: unknown) => {
+    if (typeof value === 'string') {
+      const url = value.trim()
+      if (!url || seen.has(url)) return
+      seen.add(url)
+      urls.push(url)
+      return
+    }
+    if (Array.isArray(value)) {
+      for (const item of value) add(item)
+    }
+  }
+  for (const value of values) add(value)
+  return urls
+}
+
+export function normalizeVideoAspectRatio(value: string): string | null {
+  const match = ASPECT_RATIO_PATTERN.exec(
+    value.trim().replaceAll('：', ':')
+  )
+  if (!match) return null
+  const width = Number(match[1])
+  const height = Number(match[2])
+  if (
+    !Number.isInteger(width) ||
+    !Number.isInteger(height) ||
+    width < 1 ||
+    height < 1 ||
+    width > MAX_ASPECT_SIDE ||
+    height > MAX_ASPECT_SIDE
+  ) {
+    return null
+  }
+  return `${width}:${height}`
+}
+
+function aspectRatioParts(aspectRatio: string): { w: number; h: number } {
+  const normalized = normalizeVideoAspectRatio(aspectRatio) ?? '16:9'
+  const [width, height] = normalized.split(':')
+  return { w: Number(width), h: Number(height) }
+}
 
 export function resolveVideoModelFamily(modelId: string): VideoModelFamily {
   const name = modelId.trim().toLowerCase()
@@ -80,7 +130,8 @@ function getSoraSize(params: VideoParams): string {
   const key = params.resolution.trim().toUpperCase()
   const isPro = /sora-2-pro/i.test(params.model)
   const highRes = isPro && (key === '1080P' || key === '2K')
-  if (params.aspectRatio === '9:16') {
+  const { w, h } = aspectRatioParts(params.aspectRatio)
+  if (h > w) {
     if (highRes) return '1024x1792'
     return '720x1280'
   }
@@ -93,6 +144,14 @@ function getGenericVideoEdge(resolution: string): number {
   if (key === '4K') return 2160
   if (key === '1080P' || key === '2K') return 1080
   return 720
+}
+
+export function videoPixelSize(resolution: string, aspectRatio: string): string {
+  const edge = getGenericVideoEdge(resolution)
+  const { w, h } = aspectRatioParts(aspectRatio)
+  if (w === h) return `${edge}x${edge}`
+  if (w > h) return `${Math.round((edge * w) / h)}x${edge}`
+  return `${edge}x${Math.round((edge * h) / w)}`
 }
 
 export function isVideoCapableModel(
@@ -113,7 +172,16 @@ export function buildVideoSubmitBody(
   const model = params.model.trim()
   const resolution = snapVideoResolution(model, params.resolution)
   const seconds = snapVideoDuration(model, duration)
-  const image = params.referenceImageUrl?.trim()
+  const images = videoReferenceUrls(
+    params.referenceImageUrls,
+    params.referenceImageUrl
+  ).slice(0, MAX_VIDEO_REFERENCE_IMAGES)
+  const videos = videoReferenceUrls(
+    params.referenceVideoUrls,
+    params.referenceVideoUrl
+  ).slice(0, MAX_VIDEO_REFERENCE_VIDEOS)
+  const audio = params.referenceAudioUrl?.trim()
+  const image = images[0]
 
   if (family === 'sora') {
     const body: Record<string, unknown> = {
@@ -126,70 +194,90 @@ export function buildVideoSubmitBody(
     return body
   }
 
+  const ratio = normalizeVideoAspectRatio(params.aspectRatio) ?? '16:9'
+
   if (family === 'minimax') {
+    const metadata: Record<string, unknown> = {
+      ratio,
+      aspect_ratio: ratio,
+      resolution,
+      duration: seconds,
+    }
+    const useReferenceRoles =
+      videos.length > 0 || Boolean(audio) || images.length > 1
+    if (videos.length > 0) metadata.video_urls = videos
+    if (audio) metadata.audio_url = audio
+    if (useReferenceRoles && images.length > 0) {
+      metadata.reference_images = images
+    }
     const body: Record<string, unknown> = {
       model,
       prompt,
       duration: seconds,
       resolution,
+      ratio,
+      metadata,
     }
-    if (image) body.image = image
+    if (!useReferenceRoles && images.length === 1) body.image = images[0]
     return body
   }
 
   if (family === 'seedance') {
+    const metadata: Record<string, unknown> = {
+      ratio,
+      resolution,
+      duration: seconds,
+    }
+    if (videos.length > 0) metadata.video_urls = videos
+    if (audio) metadata.audio_url = audio
     const body: Record<string, unknown> = {
       model,
       prompt,
       seconds: String(seconds),
       duration: seconds,
       resolution,
-      metadata: {
-        ratio: params.aspectRatio,
-        resolution,
-        duration: seconds,
-      },
+      metadata,
     }
     if (image) body.image = image
+    if (images.length > 1) body.images = images
     return body
   }
 
   if (family === 'kling') {
+    const metadata: Record<string, unknown> = {
+      duration: seconds,
+      aspect_ratio: ratio,
+      mode: 'std',
+    }
+    if (videos.length > 0) metadata.video_urls = videos
+    if (audio) metadata.audio_url = audio
     const body: Record<string, unknown> = {
       model,
       prompt,
       duration: seconds,
-      metadata: {
-        duration: seconds,
-        aspect_ratio: params.aspectRatio,
-        mode: 'std',
-      },
+      metadata,
     }
     if (image) body.image = image
     return body
   }
 
-  const edge = getGenericVideoEdge(resolution)
-  let size = `${Math.round((edge * 16) / 9)}x${edge}`
-  if (params.aspectRatio === '9:16') {
-    size = `${edge}x${Math.round((edge * 16) / 9)}`
-  } else if (params.aspectRatio === '1:1') {
-    size = `${edge}x${edge}`
+  const metadata: Record<string, unknown> = {
+    ratio,
+    resolution,
+    duration: seconds,
   }
-
+  if (videos.length > 0) metadata.video_urls = videos
+  if (audio) metadata.audio_url = audio
   const body: Record<string, unknown> = {
     model,
     prompt,
     seconds: String(seconds),
     duration: seconds,
-    size,
+    size: videoPixelSize(resolution, ratio),
     resolution,
-    metadata: {
-      ratio: params.aspectRatio,
-      resolution,
-      duration: seconds,
-    },
+    metadata,
   }
   if (image) body.image = image
+  if (images.length > 1) body.images = images
   return body
 }

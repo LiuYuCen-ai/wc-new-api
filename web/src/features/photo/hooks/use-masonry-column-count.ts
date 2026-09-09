@@ -16,36 +16,36 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 
 import { masonryColumnCountForWidth } from '../lib/works-masonry'
 
-export function useMasonryColumnCount(): number {
-  const [count, setCount] = useState(() =>
+export function useMasonryColumnCount() {
+  const containerRef = useRef<HTMLDivElement>(null)
+  const [columnCount, setColumnCount] = useState(() =>
     typeof window === 'undefined'
       ? 2
       : masonryColumnCountForWidth(window.innerWidth)
   )
 
   useEffect(() => {
-    const media = [
-      window.matchMedia('(min-width: 1024px)'),
-      window.matchMedia('(min-width: 768px)'),
-      window.matchMedia('(min-width: 640px)'),
-    ]
+    const node = containerRef.current
+    if (!node) return
+
     const sync = () => {
-      setCount(masonryColumnCountForWidth(window.innerWidth))
+      setColumnCount(masonryColumnCountForWidth(node.clientWidth))
     }
     sync()
-    for (const query of media) {
-      query.addEventListener('change', sync)
+
+    if (typeof ResizeObserver === 'undefined') {
+      window.addEventListener('resize', sync)
+      return () => window.removeEventListener('resize', sync)
     }
-    return () => {
-      for (const query of media) {
-        query.removeEventListener('change', sync)
-      }
-    }
+
+    const observer = new ResizeObserver(sync)
+    observer.observe(node)
+    return () => observer.disconnect()
   }, [])
 
-  return count
+  return { containerRef, columnCount }
 }

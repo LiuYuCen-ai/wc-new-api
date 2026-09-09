@@ -145,6 +145,53 @@ func TestProtectedFetchDialerDialsWhenAllResolvedIPsAllowed(t *testing.T) {
 	require.Equal(t, []string{"8.8.8.8:443"}, dialed)
 }
 
+func TestProtectedFetchDialerAllowsFakeIPResolvedFromHostname(t *testing.T) {
+	var dialed []string
+	dialer := &protectedFetchDialer{
+		resolver: staticSSRFResolver{
+			"dashscope-0484.oss-accelerate.aliyuncs.com": {
+				{IP: net.ParseIP("198.18.0.76")},
+			},
+		},
+		dialContext: func(ctx context.Context, network, address string) (net.Conn, error) {
+			dialed = append(dialed, address)
+			return testConn(t), nil
+		},
+		getProtection: staticProtection(&common.SSRFProtection{
+			AllowPrivateIp:         false,
+			DomainFilterMode:       false,
+			IpFilterMode:           false,
+			ApplyIPFilterForDomain: true,
+		}),
+	}
+
+	conn, err := dialer.DialContext(context.Background(), "tcp", "dashscope-0484.oss-accelerate.aliyuncs.com:443")
+	require.NoError(t, err)
+	require.NotNil(t, conn)
+	require.Equal(t, []string{"198.18.0.76:443"}, dialed)
+}
+
+func TestProtectedFetchDialerRejectsLiteralFakeIP(t *testing.T) {
+	dialer := &protectedFetchDialer{
+		resolver: staticSSRFResolver{},
+		dialContext: func(ctx context.Context, network, address string) (net.Conn, error) {
+			t.Fatalf("dialContext should not be called for blocked address %s", address)
+			return nil, nil
+		},
+		getProtection: staticProtection(&common.SSRFProtection{
+			AllowPrivateIp:         false,
+			DomainFilterMode:       false,
+			IpFilterMode:           false,
+			ApplyIPFilterForDomain: true,
+		}),
+	}
+
+	conn, err := dialer.DialContext(context.Background(), "tcp", "198.18.0.76:443")
+	require.Error(t, err)
+	require.Nil(t, conn)
+	require.Contains(t, err.Error(), "private IP address not allowed")
+}
+
 func TestProtectedFetchDialerAllowsPrivateIPWhenWhitelisted(t *testing.T) {
 	var dialed []string
 	dialer := &protectedFetchDialer{

@@ -37,6 +37,41 @@ func TestConvertToV2RequestPayloadTextToVideo(t *testing.T) {
 	assert.Equal(t, "a boy plays basketball by the sea", body.Content[0].Text)
 }
 
+func TestConvertToV2RequestPayloadUsesSubmittedRatio(t *testing.T) {
+	adaptor := &TaskAdaptor{}
+	req := &relaycommon.TaskSubmitReq{
+		Prompt:     "a boy plays basketball by the sea",
+		Resolution: "768p",
+		Duration:   6,
+		Ratio:      "9:16",
+		Metadata: map[string]interface{}{
+			"ratio": "4:5",
+		},
+	}
+	info := &relaycommon.RelayInfo{
+		ChannelMeta: &relaycommon.ChannelMeta{UpstreamModelName: ModelMiniMaxH3},
+	}
+
+	body, err := adaptor.convertToV2RequestPayload(req, info)
+	require.NoError(t, err)
+	assert.Equal(t, "4:5", body.Ratio)
+}
+
+func TestConvertToV2RequestPayloadUsesTopLevelRatio(t *testing.T) {
+	adaptor := &TaskAdaptor{}
+	req := &relaycommon.TaskSubmitReq{
+		Prompt: "a lantern rising over an old town",
+		Ratio:  "21:9",
+	}
+	info := &relaycommon.RelayInfo{
+		ChannelMeta: &relaycommon.ChannelMeta{UpstreamModelName: ModelMiniMaxH3},
+	}
+
+	body, err := adaptor.convertToV2RequestPayload(req, info)
+	require.NoError(t, err)
+	assert.Equal(t, "21:9", body.Ratio)
+}
+
 func TestConvertToV2RequestPayloadImageToVideo(t *testing.T) {
 	adaptor := &TaskAdaptor{}
 	req := &relaycommon.TaskSubmitReq{
@@ -62,6 +97,86 @@ func TestConvertToV2RequestPayloadImageToVideo(t *testing.T) {
 	assert.Equal(t, "first_frame", body.Content[1].Role)
 	assert.Equal(t, "https://example.com/first.png", body.Content[1].ImageURL.URL)
 	assert.Equal(t, "last_frame", body.Content[2].Role)
+}
+
+func TestConvertToV2RequestPayloadReferenceVideoAndAudio(t *testing.T) {
+	adaptor := &TaskAdaptor{}
+	req := &relaycommon.TaskSubmitReq{
+		Prompt: "character speaks with the reference timbre",
+		Metadata: map[string]interface{}{
+			"reference_image": "https://example.com/ref.png",
+			"video_url":       "https://example.com/ref.mp4",
+			"audio_url":       "https://example.com/ref.mp3",
+		},
+	}
+	info := &relaycommon.RelayInfo{
+		ChannelMeta: &relaycommon.ChannelMeta{UpstreamModelName: ModelMiniMaxH3},
+	}
+
+	body, err := adaptor.convertToV2RequestPayload(req, info)
+	require.NoError(t, err)
+	assert.Equal(t, "adaptive", body.Ratio)
+	require.Len(t, body.Content, 4)
+	assert.Equal(t, "reference_image", body.Content[1].Role)
+	assert.Equal(t, "https://example.com/ref.png", body.Content[1].ImageURL.URL)
+	assert.Equal(t, "video_url", body.Content[2].Type)
+	assert.Equal(t, "reference_video", body.Content[2].Role)
+	assert.Equal(t, "https://example.com/ref.mp4", body.Content[2].VideoURL.URL)
+	assert.Equal(t, "audio_url", body.Content[3].Type)
+	assert.Equal(t, "reference_audio", body.Content[3].Role)
+	assert.Equal(t, "https://example.com/ref.mp3", body.Content[3].AudioURL.URL)
+}
+
+func TestConvertToV2RequestPayloadMultipleReferenceImagesAndVideos(t *testing.T) {
+	adaptor := &TaskAdaptor{}
+	req := &relaycommon.TaskSubmitReq{
+		Prompt: "keep the same character across clips",
+		Metadata: map[string]interface{}{
+			"reference_images": []interface{}{
+				"https://example.com/a.png",
+				"https://example.com/b.png",
+			},
+			"video_urls": []interface{}{
+				"https://example.com/a.mp4",
+				"https://example.com/b.mp4",
+			},
+		},
+	}
+	info := &relaycommon.RelayInfo{
+		ChannelMeta: &relaycommon.ChannelMeta{UpstreamModelName: ModelMiniMaxH3},
+	}
+
+	body, err := adaptor.convertToV2RequestPayload(req, info)
+	require.NoError(t, err)
+	require.Len(t, body.Content, 5)
+	assert.Equal(t, "reference_image", body.Content[1].Role)
+	assert.Equal(t, "https://example.com/a.png", body.Content[1].ImageURL.URL)
+	assert.Equal(t, "reference_image", body.Content[2].Role)
+	assert.Equal(t, "https://example.com/b.png", body.Content[2].ImageURL.URL)
+	assert.Equal(t, "reference_video", body.Content[3].Role)
+	assert.Equal(t, "https://example.com/a.mp4", body.Content[3].VideoURL.URL)
+	assert.Equal(t, "reference_video", body.Content[4].Role)
+	assert.Equal(t, "https://example.com/b.mp4", body.Content[4].VideoURL.URL)
+}
+
+func TestConvertToV2RequestPayloadUsesImageAsReferenceWhenVideoPresent(t *testing.T) {
+	adaptor := &TaskAdaptor{}
+	req := &relaycommon.TaskSubmitReq{
+		Prompt: "follow the motion in the clip",
+		Image:  "https://example.com/first.png",
+		Metadata: map[string]interface{}{
+			"video_url": "https://example.com/ref.mp4",
+		},
+	}
+	info := &relaycommon.RelayInfo{
+		ChannelMeta: &relaycommon.ChannelMeta{UpstreamModelName: ModelMiniMaxH3},
+	}
+
+	body, err := adaptor.convertToV2RequestPayload(req, info)
+	require.NoError(t, err)
+	require.Len(t, body.Content, 3)
+	assert.Equal(t, "reference_image", body.Content[1].Role)
+	assert.Equal(t, "reference_video", body.Content[2].Role)
 }
 
 func TestConvertToV2RequestPayloadRejectsEmptyPrompt(t *testing.T) {

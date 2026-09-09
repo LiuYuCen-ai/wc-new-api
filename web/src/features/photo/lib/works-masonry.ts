@@ -44,11 +44,41 @@ export function mediaAspectRatioCss(
   return `${parts.w} / ${parts.h}`
 }
 
+export function clampFeedCoverAspect(
+  ratio?: string | null,
+  fallback?: AspectRatioParts
+): AspectRatioParts {
+  const parts = parseMediaAspectRatio(ratio, fallback)
+  if (parts.w / parts.h > 4 / 3) {
+    return { w: 4, h: 3 }
+  }
+  if (parts.h / parts.w > 4 / 3) {
+    return { w: 3, h: 4 }
+  }
+  return parts
+}
+
+export function feedCoverAspectCss(
+  ratio?: string | null,
+  fallback?: AspectRatioParts
+): string {
+  const parts = clampFeedCoverAspect(ratio, fallback)
+  return `${parts.w} / ${parts.h}`
+}
+
 export function masonryItemWeight(
   ratio?: string | null,
   fallback?: AspectRatioParts
 ): number {
   const parts = parseMediaAspectRatio(ratio, fallback)
+  return parts.h / parts.w + CAPTION_WEIGHT
+}
+
+export function feedCoverWeight(
+  ratio?: string | null,
+  fallback?: AspectRatioParts
+): number {
+  const parts = clampFeedCoverAspect(ratio, fallback)
   return parts.h / parts.w + CAPTION_WEIGHT
 }
 
@@ -72,10 +102,11 @@ export function photoCoverAspectFromSnapshot(params?: {
 }
 
 export function masonryColumnCountForWidth(width: number): number {
-  if (width >= 1024) return 5
-  if (width >= 768) return 4
-  if (width >= 640) return 3
-  return 2
+  if (!Number.isFinite(width) || width <= 0) return 2
+  const gap = 10
+  const minCardWidth = 240
+  const count = Math.floor((width + gap) / (minCardWidth + gap))
+  return Math.min(5, Math.max(2, count))
 }
 
 export function coverFocusPosition(id: string): string {
