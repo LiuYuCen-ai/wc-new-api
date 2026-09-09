@@ -89,7 +89,7 @@ export function useTopNavLinks(): TopNavLink[] {
   // Docs (supports external links — from modules.docs.url or fallback status.docs_link)
   if (modules?.docs !== false) {
     const docsEnabled =
-      typeof modules?.docs === 'object' ? modules.docs.enabled : modules?.docs !== false
+      typeof modules?.docs === 'object' ? modules.docs.enabled : true
     const docsUrl =
       (typeof modules?.docs === 'object' && modules.docs.url) || docsLink
 

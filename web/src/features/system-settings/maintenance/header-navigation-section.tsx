@@ -119,7 +119,7 @@ const toFormValues = (config: HeaderNavModulesConfig): HeaderNavFormValues => ({
     typeof config.docs === 'object'
       ? Boolean(config.docs.enabled)
       : config.docs === undefined
-        ? HEADER_NAV_DEFAULT.docs
+        ? Boolean(HEADER_NAV_DEFAULT.docs)
         : Boolean(config.docs),
   docsUrl:
     typeof config.docs === 'object' ? (config.docs.url ?? '') : '',
@@ -193,7 +193,7 @@ export function HeaderNavigationSection({
   }
 
   const simpleModules: Array<{
-    key: keyof HeaderNavFormValues
+    key: 'home' | 'console' | 'about'
     title: string
     description: string
   }> = [
@@ -215,8 +215,8 @@ export function HeaderNavigationSection({
   ]
 
   const accessModules: Array<{
-    enabledKey: keyof HeaderNavFormValues
-    requireAuthKey: keyof HeaderNavFormValues
+    enabledKey: 'pricingEnabled' | 'rankingsEnabled' | 'photoEnabled' | 'studioEnabled'
+    requireAuthKey: 'pricingRequireAuth' | 'rankingsRequireAuth' | 'photoRequireAuth' | 'studioRequireAuth'
     requireAuthDependsOn:
       | 'pricingEnabled'
       | 'rankingsEnabled'

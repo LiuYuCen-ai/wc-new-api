@@ -167,8 +167,8 @@ function NoticeContent({
 }
 
 const GUIDE_STEPS = [
-  { label: '在控制台中创建密钥' },
-  { label: '复制密钥到您所需要的应用中' },
+  'Create an API key in the console',
+  'Copy the API key into the application you want to use',
 ]
 
 function GuideSlide({ t }: { t: TFunction }) {
@@ -181,7 +181,7 @@ function GuideSlide({ t }: { t: TFunction }) {
               <div className='flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-[var(--announcement-primary,#facc15)] text-sm font-extrabold text-slate-900'>
                 {i + 1}
               </div>
-              <span className='text-base font-medium text-white'>{step.label}</span>
+              <span className='text-base font-medium text-white'>{t(step)}</span>
             </div>
             {i < GUIDE_STEPS.length - 1 && (
               <div className='h-4 w-px bg-white/30' />
@@ -190,7 +190,7 @@ function GuideSlide({ t }: { t: TFunction }) {
         ))}
       </div>
       <p className='mt-1 max-w-xs text-center text-sm text-white/60'>
-        {t('如有疑问请查看详细文档或右下角私信客服')}
+        {t('For questions, please check the detailed documentation or message customer support in the bottom-right corner')}
       </p>
     </div>
   )
@@ -232,7 +232,7 @@ export function NotificationDialog({
     setSlide(index)
   }
 
-  const titles = [t('Important Notice'), t('使用指南')]
+  const titles = [t('Important Notice'), t('Usage Guide')]
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
