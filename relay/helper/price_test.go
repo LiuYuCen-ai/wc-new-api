@@ -315,3 +315,45 @@ func TestModelPriceHelperPerCallResolutionUsesRequestResolution(t *testing.T) {
 	require.Equal(t, expectedQuota, priceData.Quota)
 	require.True(t, HasModelBillingConfig("MiniMax-H3"))
 }
+
+func TestModelPriceHelperPerCallResolutionUsesMiniMaxH32K(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	saved := map[string]string{}
+	require.NoError(t, config.GlobalConfig.SaveToDB(func(key, value string) error {
+		saved[key] = value
+		return nil
+	}))
+	t.Cleanup(func() {
+		require.NoError(t, config.GlobalConfig.LoadFromDB(saved))
+	})
+
+	require.NoError(t, config.GlobalConfig.LoadFromDB(map[string]string{
+		"billing_setting.billing_mode": `{"MiniMax-H3":"resolution"}`,
+		"billing_setting.resolution_price": `{
+			"MiniMax-H3": {"768P": 0.01, "2K": 0.05}
+		}`,
+	}))
+
+	ctx, _ := gin.CreateTestContext(httptest.NewRecorder())
+	ctx.Set("group", "default")
+	ctx.Set("task_request", relaycommon.TaskSubmitReq{
+		Resolution: "2K",
+		Duration:   5,
+	})
+
+	info := &relaycommon.RelayInfo{
+		OriginModelName: "MiniMax-H3",
+		UserGroup:       "default",
+		UsingGroup:      "default",
+	}
+
+	priceData, err := ModelPriceHelperPerCall(ctx, info)
+	require.NoError(t, err)
+	require.True(t, priceData.UsePrice)
+	require.Equal(t, 0.05, priceData.ModelPrice)
+	require.Equal(t, "2K", priceData.Resolution)
+	expectedQuota, err := common.QuotaFromFloatStrict(0.05 * common.QuotaPerUnit)
+	require.NoError(t, err)
+	require.Equal(t, expectedQuota, priceData.Quota)
+}

@@ -607,24 +607,24 @@ func normalizeV2Resolution(resolution, size string, modelConfig ModelConfig) str
 
 	normalized := billing_setting.NormalizeResolution(raw)
 	switch normalized {
-	case "2K":
+	case "2K", "1080P", "4K":
 		return Resolution2K
-	case "768P":
+	case "768P", "720P", "512P":
 		return Resolution768P
 	}
 
 	upper := strings.ToUpper(strings.TrimSpace(raw))
 	switch upper {
-	case Resolution2K:
+	case Resolution2K, Resolution1080P, "4K":
 		return Resolution2K
-	case Resolution768P, "768":
+	case Resolution768P, Resolution720P, "768":
 		return Resolution768P
 	}
 
-	if strings.Contains(strings.ToLower(raw), "2k") {
+	if strings.Contains(strings.ToLower(raw), "2k") || strings.Contains(strings.ToLower(raw), "4k") {
 		return Resolution2K
 	}
-	if strings.Contains(raw, "768") {
+	if strings.Contains(raw, "768") || strings.Contains(raw, "720") {
 		return Resolution768P
 	}
 	return modelConfig.DefaultResolution

@@ -118,12 +118,16 @@ export function snapVideoResolution(
 ): string {
   const family = resolveVideoModelFamily(modelId)
   const key = resolution.trim().toUpperCase()
-  if (family === 'minimax') {
+  if (family !== 'minimax') return resolution
+  // MiniMax-H3 official tiers are 768P and 2K. Legacy Hailuo models use 768P / 1080P.
+  if (/minimax-h3/.test(modelId.trim().toLowerCase())) {
     if (key === '720P' || key === '1K') return '768P'
-    if (key === '2K' || key === '4K') return '1080P'
+    if (key === '1080P' || key === '4K') return '2K'
     return key || '768P'
   }
-  return resolution
+  if (key === '720P' || key === '1K') return '768P'
+  if (key === '2K' || key === '4K') return '1080P'
+  return key || '768P'
 }
 
 function getSoraSize(params: VideoParams): string {

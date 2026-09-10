@@ -75,3 +75,29 @@ func TestGetResolutionPriceFallsBackTo720P(t *testing.T) {
 		"4K":    0.08,
 	}, prices)
 }
+
+func TestGetResolutionPriceUses2KWhenConfigured(t *testing.T) {
+	saved := billingSetting.ResolutionPrice
+	t.Cleanup(func() {
+		billingSetting.ResolutionPrice = saved
+	})
+
+	billingSetting.ResolutionPrice = map[string]map[string]float64{
+		"MiniMax-H3": {
+			"768P": 0.01,
+			"2K":   0.05,
+		},
+	}
+
+	price, ok := GetResolutionPrice("MiniMax-H3", "2K")
+	require.True(t, ok)
+	assert.Equal(t, 0.05, price)
+
+	price, ok = GetResolutionPrice("MiniMax-H3", "768p")
+	require.True(t, ok)
+	assert.Equal(t, 0.01, price)
+
+	// 1080P is not a MiniMax-H3 tier; without 720P it must not silently succeed.
+	_, ok = GetResolutionPrice("MiniMax-H3", "1080P")
+	assert.False(t, ok)
+}

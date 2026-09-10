@@ -88,6 +88,24 @@ describe('buildVideoSubmitBody', () => {
     })
   })
 
+  test('keeps MiniMax-H3 2K on the request body', () => {
+    const body = buildVideoSubmitBody(
+      {
+        ...baseParams,
+        model: 'MiniMax-H3',
+        resolution: '2K',
+      },
+      6
+    )
+    assert.equal(body.resolution, '2K')
+    assert.deepEqual(body.metadata, {
+      ratio: '16:9',
+      aspect_ratio: '16:9',
+      resolution: '2K',
+      duration: 6,
+    })
+  })
+
   test('computes generic pixel size from a custom ratio', () => {
     const body = buildVideoSubmitBody(
       {
@@ -193,6 +211,17 @@ describe('buildVideoSubmitBody', () => {
 describe('snapVideoResolution', () => {
   test('maps 720P onto MiniMax 768P', () => {
     assert.equal(snapVideoResolution('MiniMax-Hailuo-2.3', '720P'), '768P')
+  })
+
+  test('keeps MiniMax-H3 2K instead of rewriting it to 1080P', () => {
+    assert.equal(snapVideoResolution('MiniMax-H3', '2K'), '2K')
+    assert.equal(snapVideoResolution('MiniMax-H3', '4K'), '2K')
+    assert.equal(snapVideoResolution('MiniMax-H3', '1080P'), '2K')
+    assert.equal(snapVideoResolution('MiniMax-H3', '720P'), '768P')
+  })
+
+  test('still maps Hailuo 2K onto 1080P', () => {
+    assert.equal(snapVideoResolution('MiniMax-Hailuo-2.3', '2K'), '1080P')
   })
 })
 

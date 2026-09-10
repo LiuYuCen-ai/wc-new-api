@@ -37,6 +37,21 @@ func TestConvertToV2RequestPayloadTextToVideo(t *testing.T) {
 	assert.Equal(t, "a boy plays basketball by the sea", body.Content[0].Text)
 }
 
+func TestConvertToV2RequestPayloadMaps1080PTo2K(t *testing.T) {
+	adaptor := &TaskAdaptor{}
+	req := &relaycommon.TaskSubmitReq{
+		Prompt:     "a boy plays basketball by the sea",
+		Resolution: "1080P",
+	}
+	info := &relaycommon.RelayInfo{
+		ChannelMeta: &relaycommon.ChannelMeta{UpstreamModelName: ModelMiniMaxH3},
+	}
+
+	body, err := adaptor.convertToV2RequestPayload(req, info)
+	require.NoError(t, err)
+	assert.Equal(t, Resolution2K, body.Resolution)
+}
+
 func TestConvertToV2RequestPayloadUsesSubmittedRatio(t *testing.T) {
 	adaptor := &TaskAdaptor{}
 	req := &relaycommon.TaskSubmitReq{
