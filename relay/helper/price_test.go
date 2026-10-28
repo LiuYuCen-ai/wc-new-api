@@ -357,3 +357,50 @@ func TestModelPriceHelperPerCallResolutionUsesMiniMaxH32K(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, expectedQuota, priceData.Quota)
 }
+
+// 按 token 计费使用独立的两档表（video_input_price.resolutions），
+// 不借用按秒的 resolution_price；请求分辨率未配价时直接报错。
+func TestModelPriceHelperPerCallTokenResolutionUsesIndependentTable(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	saved := map[string]string{}
+	require.NoError(t, config.GlobalConfig.SaveToDB(func(key, value string) error {
+		saved[key] = value
+		return nil
+	}))
+	t.Cleanup(func() {
+		require.NoError(t, config.GlobalConfig.LoadFromDB(saved))
+	})
+
+	require.NoError(t, config.GlobalConfig.LoadFromDB(map[string]string{
+		"billing_setting.billing_mode":    `{"vm":"resolution"}`,
+		"billing_setting.resolution_unit": `{"vm":"million_tokens"}`,
+		// 按秒表：不得被按 token 计费使用。
+		"billing_setting.resolution_price":  `{"vm":{"720P":0.5}}`,
+		"billing_setting.video_input_price": `{"vm":{"no_video":0.46,"video":0.28,"resolutions":{"720P":{"no_video":0.08,"video":0.05}}}}`,
+	}))
+
+	newCtx := func(resolution string) *gin.Context {
+		ctx, _ := gin.CreateTestContext(httptest.NewRecorder())
+		ctx.Set("group", "default")
+		ctx.Set("task_request", relaycommon.TaskSubmitReq{
+			Resolution: resolution,
+			Duration:   5,
+		})
+		return ctx
+	}
+	info := &relaycommon.RelayInfo{
+		OriginModelName: "vm",
+		UserGroup:       "default",
+		UsingGroup:      "default",
+	}
+
+	priceData, err := ModelPriceHelperPerCall(newCtx("720P"), info)
+	require.NoError(t, err)
+	require.Equal(t, 0.08, priceData.ModelPrice)
+	require.Equal(t, "720P", priceData.Resolution)
+
+	// 1080P 未在按 token 表配置：报错，不回退按秒价 0.5，也不回退 720P。
+	_, err = ModelPriceHelperPerCall(newCtx("1080P"), info)
+	require.Error(t, err)
+}

@@ -1,26 +1,15 @@
-/*
-Copyright (C) 2023-2026 QuantumNous
-
-This program is free software: you can redistribute it and/or modify
-it under the terms of the GNU Affero General Public License as
-published by the Free Software Foundation, either version 3 of the
-License, or (at your option) any later version.
-
-This program is distributed in the hope that it will be useful,
-but WITHOUT ANY WARRANTY; without even the implied warranty of
-MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-GNU Affero General Public License for more details.
-
-You should have received a copy of the GNU Affero General Public License
-along with this program. If not, see <https://www.gnu.org/licenses/>.
-
-For commercial licensing, please contact support@quantumnous.com
-*/
 import * as z from 'zod'
 
 import { combineBillingExpr } from '@/features/pricing/lib/billing-expr'
+import { getBillingCurrencySymbol } from '@/lib/currency'
 
 import { formatPricingNumber } from './pricing-format'
+import {
+  isTokenBillingUnit,
+  normalizeResolutionLabel,
+  type ResolutionBillingUnit,
+  type VideoInputPriceConfig,
+} from './resolution-pricing'
 
 export const createModelPricingSchema = (t: (key: string) => string) =>
   z.object({
@@ -67,6 +56,9 @@ export type ModelRatioData = {
   billingExpr?: string
   requestRuleExpr?: string
   resolutionPrices?: Record<string, number>
+  resolutionUnit?: ResolutionBillingUnit
+  /** Seedance 视频输入计费覆盖（¥/百万 token）；未设置时按官方刊例价计费。 */
+  videoInputPrice?: VideoInputPriceConfig | null
 }
 
 export type PreviewRow = {
@@ -221,11 +213,29 @@ export function buildPreviewRows(
   lanePrices: Record<LaneKey, string>,
   laneEnabled: Record<LaneKey, boolean>,
   t: (key: string) => string,
-  resolutionPrices?: Record<string, number>
+  resolutionPrices?: Record<string, number>,
+  resolutionUnit?: ResolutionBillingUnit,
+  videoInputPrice?: VideoInputPriceConfig | null
 ): PreviewRow[] {
+  const videoInputRows: PreviewRow[] = videoInputPrice
+    ? [
+        {
+          key: 'video_input_no_video',
+          label: t('No video input price'),
+          value: `${getBillingCurrencySymbol()}${videoInputPrice.no_video} / ${t('1M tokens')}`,
+        },
+        {
+          key: 'video_input_video',
+          label: t('With video input price'),
+          value: `${getBillingCurrencySymbol()}${videoInputPrice.video} / ${t('1M tokens')}`,
+        },
+      ]
+    : []
+
   if (mode === 'tiered_expr') {
     const effectiveExpr = combineBillingExpr(billingExpr, requestRuleExpr)
     return [
+      ...videoInputRows,
       { key: 'mode', label: 'BillingMode', value: 'tiered_expr' },
       {
         key: 'expr',
@@ -238,24 +248,65 @@ export function buildPreviewRows(
 
   if (mode === 'resolution') {
     const entries = Object.entries(resolutionPrices ?? {})
+    const unitLabel = isTokenBillingUnit(resolutionUnit)
+      ? t('per 1M tokens')
+      : t('per second')
     if (entries.length === 0) {
+      // 「按 token」时不再配置分辨率单价，实际按视频输入两档单价 + token 估算计费。
+      if (isTokenBillingUnit(resolutionUnit)) {
+        return [
+          ...videoInputRows,
+          { key: 'mode', label: t('Mode'), value: t('Per-token') },
+        ]
+      }
       return [
+        ...videoInputRows,
         { key: 'mode', label: t('Mode'), value: t('By resolution') },
         { key: 'empty', label: t('Price summary'), value: t('Empty') },
       ]
     }
     return [
-      { key: 'mode', label: t('Mode'), value: t('By resolution') },
-      ...entries.map(([resolution, price]) => ({
-        key: resolution,
-        label: resolution,
-        value: `$${price}`,
-      })),
+      ...videoInputRows,
+      {
+        key: 'mode',
+        label: t('Mode'),
+        value: `${t('By resolution')} · ${unitLabel}`,
+      },
+      ...entries.map(([resolution, price]) => {
+        if (!isTokenBillingUnit(resolutionUnit)) {
+          return {
+            key: resolution,
+            label: resolution,
+            value: `$${price} / ${unitLabel}`,
+          }
+        }
+        // 按 token：逐分辨率两档价——有视频档优先取逐分辨率配置，否则按全局倍率换算。
+        const tier =
+          videoInputPrice?.resolutions?.[resolution] ??
+          videoInputPrice?.resolutions?.[normalizeResolutionLabel(resolution)]
+        let withVideo: number | undefined
+        if (tier && tier.video > 0) {
+          withVideo = tier.video
+        } else if (
+          videoInputPrice &&
+          videoInputPrice.no_video > 0 &&
+          videoInputPrice.video > 0
+        ) {
+          withVideo = price * (videoInputPrice.video / videoInputPrice.no_video)
+        }
+        const symbol = getBillingCurrencySymbol()
+        const value =
+          withVideo !== undefined
+            ? `${symbol}${price} / ${symbol}${formatPricingNumber(withVideo)} (${t('No video')} / ${t('With video')}) / ${unitLabel}`
+            : `${symbol}${price} / ${unitLabel}`
+        return { key: resolution, label: resolution, value }
+      }),
     ]
   }
 
   if (mode === 'per-request') {
     return [
+      ...videoInputRows,
       {
         key: 'price',
         label: 'ModelPrice',
@@ -265,6 +316,7 @@ export function buildPreviewRows(
   }
 
   return [
+    ...videoInputRows,
     {
       key: 'inputPrice',
       label: t('Input price'),

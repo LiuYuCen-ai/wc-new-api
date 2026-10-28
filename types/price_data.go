@@ -30,6 +30,7 @@ type PriceData struct {
 	Quota                int    // 按次计费的最终额度（MJ / Task）
 	QuotaToPreConsume    int    // 按量计费的预消耗额度
 	Resolution           string // 分辨率计费档（如 720P）；非 resolution 模式为空
+	BillingUnit          string // 分辨率计费单位（second / million_tokens）；非 resolution 模式为空
 	GroupRatioInfo       GroupRatioInfo
 }
 

@@ -1,21 +1,3 @@
-/*
-Copyright (C) 2023-2026 QuantumNous
-
-This program is free software: you can redistribute it and/or modify
-it under the terms of the GNU Affero General Public License as
-published by the Free Software Foundation, either version 3 of the
-License, or (at your option) any later version.
-
-This program is distributed in the hope that it will be useful,
-but WITHOUT ANY WARRANTY; without even the implied warranty of
-MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-GNU Affero General Public License for more details.
-
-You should have received a copy of the GNU Affero General Public License
-along with this program. If not, see <https://www.gnu.org/licenses/>.
-
-For commercial licensing, please contact support@quantumnous.com
-*/
 /**
  * Type definitions for usage logs
  */
@@ -235,6 +217,23 @@ export interface LogOtherData {
   is_task?: boolean
   task_id?: string
   reason?: string
+  // 视频输入计费配置（管理端口径，人民币/百万 token）：命中档位与两档单价。
+  video_input_price?: { no_video?: number; video?: number }
+  video_input_tier?: 'no_video' | 'video' | string
+  // 本次生效的视频输入倍率（有视频价 / 无视频价），用于反推老日志的命中档位。
+  video_input?: number
+  // 按分辨率计费命中的分辨率档位与计费单位（second | million_tokens）。
+  resolution?: string
+  billing_unit?: string
+  // 预扣时按「时长 × 宽 × 高 × 24fps / 1024」估算的视频 token 数。
+  est_video_tokens?: number
+  // 任务完成后上游返回的真实视频 token 数（结算日志）。
+  actual_video_tokens?: number
+  // 本次实际计价单价（按秒：美元/秒；按 token：美元/百万 token，已含视频输入倍率）。
+  applied_unit_price?: number
+  // 差额结算日志：预扣额度与实际应扣额度（用于展示补扣 / 退还）。
+  pre_consumed_quota?: number
+  actual_quota?: number
   // Subscription billing fields
   subscription_plan_id?: string
   subscription_plan_title?: string

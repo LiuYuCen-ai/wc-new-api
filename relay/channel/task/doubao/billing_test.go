@@ -6,6 +6,7 @@ import (
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/constant"
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
+	"github.com/QuantumNous/new-api/setting/billing_setting"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -80,4 +81,75 @@ func TestSeedanceRequestedDurationAutoUsesSeriesMax(t *testing.T) {
 	req := relaycommon.TaskSubmitReq{Duration: -1}
 	assert.Equal(t, 30, seedanceRequestedDuration(req, "doubao-seedance-2-5"))
 	assert.Equal(t, 15, seedanceRequestedDuration(req, "doubao-seedance-2-0-mini"))
+}
+
+func TestGetVideoInputRatioFallsBackToOfficialTable(t *testing.T) {
+	t.Parallel()
+	ratio, ok := GetVideoInputRatio("doubao-seedance-2-0", "720p", true)
+	require.True(t, ok)
+	assert.InDelta(t, 28.0/46.0, ratio, 1e-9)
+
+	ratio, ok = GetVideoInputRatio("doubao-seedance-2-0", "1080p", false)
+	require.True(t, ok)
+	assert.InDelta(t, 51.0/46.0, ratio, 1e-9)
+}
+
+func TestGetVideoInputRatioUsesConfiguredPrices(t *testing.T) {
+	saved := billing_setting.GetVideoInputPriceCopy()
+	t.Cleanup(func() {
+		billing_setting.ReplaceVideoInputPrice(saved)
+	})
+	billing_setting.ReplaceVideoInputPrice(map[string]billing_setting.VideoInputPricing{
+		"doubao-seedance-2-0": {NoVideo: 40, Video: 20},
+	})
+
+	// 配置优先：基准档 video_input = 20/40，与官方一致。
+	ratio, ok := GetVideoInputRatio("doubao-seedance-2-0", "720p", true)
+	require.True(t, ok)
+	assert.InDelta(t, 0.5, ratio, 1e-9)
+
+	// 1080p 保持官方相对折扣（31/28）：20 × 31/28 / 40。
+	ratio, ok = GetVideoInputRatio("doubao-seedance-2-0", "1080p", true)
+	require.True(t, ok)
+	assert.InDelta(t, 20.0*31.0/28.0/40.0, ratio, 1e-9)
+
+	// 无视频输入基准档倍率为 1（配置即基准价）。
+	ratio, ok = GetVideoInputRatio("doubao-seedance-2-0", "720p", false)
+	require.True(t, ok)
+	assert.InDelta(t, 1.0, ratio, 1e-9)
+}
+
+func TestSeedanceEstimateBillingAppliesConfiguredOverride(t *testing.T) {
+	saved := billing_setting.GetVideoInputPriceCopy()
+	t.Cleanup(func() {
+		billing_setting.ReplaceVideoInputPrice(saved)
+	})
+	billing_setting.ReplaceVideoInputPrice(map[string]billing_setting.VideoInputPricing{
+		"doubao-seedance-2-0": {NoVideo: 40, Video: 20},
+	})
+
+	req := relaycommon.TaskSubmitReq{
+		Duration: 5,
+		Metadata: map[string]interface{}{"resolution": "720p", "ratio": "16:9"},
+	}
+	// 基准价由 ModelRatio 直接表达配置的无视频单价，预扣只带 precharge。
+	ratios := seedanceEstimateBilling(req, "doubao-seedance-2-0", "")
+	require.NotEmpty(t, ratios)
+	_, hasBasePrice := ratios[constant.TaskOtherRatioBasePrice]
+	assert.False(t, hasBasePrice)
+	_, hasVideoInput := ratios[constant.TaskOtherRatioVideoInput]
+	assert.False(t, hasVideoInput)
+
+	withVideo := req
+	withVideo.Metadata = map[string]interface{}{
+		"resolution": "720p",
+		"ratio":      "16:9",
+		"content": []interface{}{
+			map[string]interface{}{"type": "video_url", "video_url": map[string]interface{}{"url": "https://example.com/a.mp4"}},
+		},
+	}
+	videoRatios := seedanceEstimateBilling(withVideo, "doubao-seedance-2-0", "")
+	assert.InDelta(t, 0.5, videoRatios[constant.TaskOtherRatioVideoInput], 1e-9)
+	_, hasBasePrice = videoRatios[constant.TaskOtherRatioBasePrice]
+	assert.False(t, hasBasePrice)
 }

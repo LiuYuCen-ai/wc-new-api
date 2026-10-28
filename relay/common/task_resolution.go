@@ -69,6 +69,47 @@ func TaskBillingSeconds(req TaskSubmitReq, fallback int) int {
 	return seconds
 }
 
+// TaskBillingAspectRatio returns the requested aspect ratio ("16:9", "9:16"…)
+// used to estimate the output pixel count for per-token video billing.
+// Lookup order: metadata.ratio, metadata.aspect_ratio, metadata.parameters
+// ratio/aspect_ratio, then size when it looks like "WxH". Empty means the
+// caller falls back to 16:9.
+func TaskBillingAspectRatio(req TaskSubmitReq) string {
+	if value := metadataString(req.Metadata, "ratio"); value != "" {
+		return value
+	}
+	if value := metadataString(req.Metadata, "aspect_ratio"); value != "" {
+		return value
+	}
+	if params := metadataObject(req.Metadata, "parameters"); params != nil {
+		if value := metadataString(params, "ratio"); value != "" {
+			return value
+		}
+		if value := metadataString(params, "aspect_ratio"); value != "" {
+			return value
+		}
+	}
+	if width, height, ok := splitSizeDims(req.Size); ok {
+		return strconv.Itoa(width) + ":" + strconv.Itoa(height)
+	}
+	return ""
+}
+
+// splitSizeDims parses "1280x720" style size values.
+func splitSizeDims(size string) (int, int, bool) {
+	value := strings.ToLower(strings.ReplaceAll(strings.TrimSpace(size), "*", "x"))
+	parts := strings.Split(value, "x")
+	if len(parts) != 2 {
+		return 0, 0, false
+	}
+	width, errW := strconv.Atoi(strings.TrimSpace(parts[0]))
+	height, errH := strconv.Atoi(strings.TrimSpace(parts[1]))
+	if errW != nil || errH != nil || width <= 0 || height <= 0 {
+		return 0, 0, false
+	}
+	return width, height, true
+}
+
 func metadataObject(meta map[string]any, key string) map[string]any {
 	if meta == nil {
 		return nil

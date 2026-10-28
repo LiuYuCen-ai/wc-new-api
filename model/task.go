@@ -125,6 +125,8 @@ type TaskBillingContext struct {
 	OtherRatios     map[string]float64 `json:"other_ratios,omitempty"`      // 附加倍率（时长、分辨率等）
 	OriginModelName string             `json:"origin_model_name,omitempty"` // 模型名称，必须为OriginModelName
 	Resolution      string             `json:"resolution,omitempty"`        // 分辨率计费档（720P / 1080P / 2K …）
+	BillingUnit     string             `json:"billing_unit,omitempty"`      // 分辨率计费单位（second / million_tokens）
+	VideoInputTier  string             `json:"video_input_tier,omitempty"`  // 提交时命中的视频输入档位（video / no_video）
 	PerCallBilling  bool               `json:"per_call_billing,omitempty"`  // 按次计费：跳过轮询阶段的差额结算
 }
 

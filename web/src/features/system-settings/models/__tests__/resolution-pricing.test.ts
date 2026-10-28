@@ -1,21 +1,3 @@
-/*
-Copyright (C) 2023-2026 QuantumNous
-
-This program is free software: you can redistribute it and/or modify
-it under the terms of the GNU Affero General Public License as
-published by the Free Software Foundation, either version 3 of the
-License, or (at your option) any later version.
-
-This program is distributed in the hope that it will be useful,
-but WITHOUT ANY WARRANTY; without even the implied warranty of
-MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-GNU Affero General Public License for more details.
-
-You should have received a copy of the GNU Affero General Public License
-along with this program. If not, see <https://www.gnu.org/licenses/>.
-
-For commercial licensing, please contact support@quantumnous.com
-*/
 import assert from 'node:assert/strict'
 import { describe, test } from 'node:test'
 
@@ -40,15 +22,18 @@ describe('normalizeResolutionLabel', () => {
     assert.equal(normalizeResolutionLabel('1920x1080'), '1080P')
     assert.equal(normalizeResolutionLabel('768p'), '768P')
     assert.equal(normalizeResolutionLabel('480p'), '480P')
+    // 1K 是上游独立档位，不能被折叠成 1080P。
+    assert.equal(normalizeResolutionLabel('1k'), '1K')
+    assert.equal(normalizeResolutionLabel('1K'), '1K')
   })
 })
 
 describe('resolutionPricesFromRows', () => {
   test('returns a price map when every row has a unique resolution and non-negative price', () => {
     const prices = resolutionPricesFromRows([
-      { id: '1', resolution: '720p', price: '0.01' },
-      { id: '2', resolution: '4k', price: '0.08' },
-      { id: '3', resolution: '768p', price: '0.03' },
+      { id: '1', resolution: '720p', price: '0.01', videoPrice: '' },
+      { id: '2', resolution: '4k', price: '0.08', videoPrice: '' },
+      { id: '3', resolution: '768p', price: '0.03', videoPrice: '' },
     ])
 
     assert.equal(prices?.['720P'], 0.01)
@@ -56,7 +41,7 @@ describe('resolutionPricesFromRows', () => {
     assert.equal(prices?.['768P'], 0.03)
     assert.equal(defaultResolutionPrice(prices ?? {}), 0.01)
     assert.deepEqual(
-      resolutionPricesFromRows([{ id: '4', resolution: '720P', price: '0' }]),
+      resolutionPricesFromRows([{ id: '4', resolution: '720P', price: '0', videoPrice: '' }]),
       { '720P': 0 }
     )
   })
@@ -64,13 +49,15 @@ describe('resolutionPricesFromRows', () => {
   test('returns null when a resolution is duplicated or the price is invalid', () => {
     assert.equal(
       resolutionPricesFromRows([
-        { id: '1', resolution: '720p', price: '0.01' },
-        { id: '2', resolution: '720P', price: '0.02' },
+        { id: '1', resolution: '720p', price: '0.01', videoPrice: '' },
+        { id: '2', resolution: '720P', price: '0.02', videoPrice: '' },
       ]),
       null
     )
     assert.equal(
-      resolutionPricesFromRows([{ id: '1', resolution: '720p', price: '' }]),
+      resolutionPricesFromRows([
+        { id: '1', resolution: '720p', price: '', videoPrice: '' },
+      ]),
       null
     )
   })

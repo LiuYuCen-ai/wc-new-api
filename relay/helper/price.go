@@ -204,6 +204,12 @@ func ModelPriceHelperPerCall(c *gin.Context, info *relaycommon.RelayInfo) (hostt
 			var ratioSuccess bool
 			var matchName string
 			modelRatio, ratioSuccess, matchName = ratio_setting.GetModelRatio(info.OriginModelName)
+			// 管理端配置了视频输入单价时，基准倍率直接由该单价推导（按展示币种，
+			// 不再二次换算），保证「展示多少就按多少计费」。
+			if ratio, ok := billing_setting.GetVideoInputModelRatio(info.OriginModelName); ok {
+				modelRatio = ratio
+				ratioSuccess = true
+			}
 			acceptUnsetRatio := false
 			if info.UserSetting.AcceptUnsetRatioModel {
 				acceptUnsetRatio = true
@@ -265,6 +271,9 @@ func HasModelBillingConfig(modelName string) bool {
 	}
 	mode := billing_setting.GetBillingMode(modelName)
 	if mode == billing_setting.BillingModeResolution {
+		if billing_setting.GetResolutionUnit(modelName) == billing_setting.ResolutionUnitMillionTokens {
+			return billing_setting.HasResolutionTokenPrices(modelName)
+		}
 		return billing_setting.HasResolutionPrice(modelName)
 	}
 	if mode != billing_setting.BillingModeTieredExpr {
@@ -274,13 +283,70 @@ func HasModelBillingConfig(modelName string) bool {
 	return ok && strings.TrimSpace(expr) != ""
 }
 
+// resolutionPriceNotConfiguredError 「按百万 token」计费下分辨率单价未配置：
+// 直接向请求方报错（管理员提示配置入口，普通用户提示联系管理员）。
+func resolutionPriceNotConfiguredError(modelName, resolution string, userId int) error {
+	if resolution != "" {
+		if model.IsAdmin(userId) {
+			return fmt.Errorf(
+				"模型 %s 按百万 token 计费，但未配置分辨率 %s 的单价。请前往「系统设置 → 分组与模型定价设置」为该模型添加该分辨率的价格；"+
+					"Model %s is billed per 1M tokens, but no unit price is configured for resolution %s. Add it in System Settings → Group & Model Pricing.",
+				modelName, resolution, modelName, resolution,
+			)
+		}
+		return fmt.Errorf(
+			"模型 %s 暂不支持分辨率 %s（未配置单价），请联系站点管理员；"+
+				"Model %s does not support resolution %s yet (no unit price configured). Please contact the site administrator.",
+			modelName, resolution, modelName, resolution,
+		)
+	}
+	if model.IsAdmin(userId) {
+		return fmt.Errorf(
+			"模型 %s 按百万 token 计费，但未配置任何分辨率单价。请前往「系统设置 → 分组与模型定价设置」为该模型添加分辨率价格；"+
+				"Model %s is billed per 1M tokens, but no resolution unit prices are configured. Add them in System Settings → Group & Model Pricing.",
+			modelName, modelName,
+		)
+	}
+	return fmt.Errorf(
+		"模型 %s 的分辨率单价尚未由管理员配置，暂时无法使用，请联系站点管理员；"+
+			"Model %s has no resolution unit prices configured yet. Please contact the site administrator.",
+		modelName, modelName,
+	)
+}
+
+// modelPriceHelperResolution 按分辨率档位计费。
+// 两张单价表相互独立，由 billing_setting.resolution_unit 决定使用哪一张：
+//   - second：resolution_price（美元/秒），额度 = 单价 × 秒数（OtherRatios: seconds）
+//   - million_tokens：video_input_price.resolutions（元/百万 token 的逐分辨率两档表），
+//     无视频档按 no_video 计费，额度 = 单价 × 百万token数（OtherRatios: mega_tokens）。
+//     按 token 计费时该表必须逐档显式配置：未配置任何档位、或请求的分辨率未配置
+//     单价时，直接报错提示用户（不回退 720P，也不借用按秒单价表）。
+//
+// 两种单位的基数换算一致，倍率由 RelayTaskSubmit 统一注入，因此所有视频模型
+// 行为一致。
 func modelPriceHelperResolution(c *gin.Context, info *relaycommon.RelayInfo, groupRatioInfo hosttypes.GroupRatioInfo) (hosttypes.PriceData, error) {
 	resolution := billing_setting.DefaultResolution
 	if req, err := relaycommon.GetTaskRequest(c); err == nil {
 		resolution = relaycommon.TaskBillingResolution(req)
 	}
-	modelPrice, ok := billing_setting.GetResolutionPrice(info.OriginModelName, resolution)
-	if !ok {
+
+	var modelPrice float64
+	var priceOk bool
+	if billing_setting.GetResolutionUnit(info.OriginModelName) == billing_setting.ResolutionUnitMillionTokens {
+		if len(billing_setting.GetResolutionTokenPrices(info.OriginModelName)) == 0 {
+			return hosttypes.PriceData{}, resolutionPriceNotConfiguredError(info.OriginModelName, "", info.UserId)
+		}
+		canonical := billing_setting.NormalizeResolution(resolution)
+		tier, ok := billing_setting.GetResolutionTokenTier(info.OriginModelName, canonical)
+		if !ok || tier.NoVideo <= 0 {
+			return hosttypes.PriceData{}, resolutionPriceNotConfiguredError(info.OriginModelName, canonical, info.UserId)
+		}
+		modelPrice = tier.NoVideo
+		priceOk = true
+	} else {
+		modelPrice, priceOk = billing_setting.GetResolutionPrice(info.OriginModelName, resolution)
+	}
+	if !priceOk {
 		return hosttypes.PriceData{}, modelPriceNotConfiguredError(info.OriginModelName, info.UserId)
 	}
 
@@ -302,7 +368,8 @@ func modelPriceHelperResolution(c *gin.Context, info *relaycommon.RelayInfo, gro
 		ModelPrice:     modelPrice,
 		UsePrice:       true,
 		Quota:          quota,
-		Resolution:     resolution,
+		Resolution:     billing_setting.NormalizeResolution(resolution),
+		BillingUnit:    billing_setting.GetResolutionUnit(info.OriginModelName),
 		GroupRatioInfo: groupRatioInfo,
 	}, nil
 }

@@ -13,8 +13,11 @@ import (
 	"github.com/QuantumNous/new-api/constant"
 	"github.com/QuantumNous/new-api/model"
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
+	"github.com/QuantumNous/new-api/setting/billing_setting"
+	"github.com/QuantumNous/new-api/setting/config"
 	"github.com/QuantumNous/new-api/setting/ratio_setting"
 	"github.com/QuantumNous/new-api/types"
+	"github.com/QuantumNous/new-api/utils"
 	"github.com/glebarez/sqlite"
 	"github.com/shopspring/decimal"
 	"github.com/stretchr/testify/assert"
@@ -818,6 +821,112 @@ func TestSettle_PerCallBilling_SkipsTotalTokens(t *testing.T) {
 	assert.Equal(t, tokenRemain, getTokenRemainQuota(t, tokenID))
 	assert.Equal(t, preConsumed, task.Quota)
 	assert.Equal(t, int64(0), countLogs(t))
+}
+
+func TestSettle_ResolutionTokenBilling_ReconcilesWithReportedTokens(t *testing.T) {
+	truncate(t)
+	ctx := context.Background()
+
+	const userID, tokenID, channelID = 41, 41, 41
+	const initQuota = 100000
+	const tokenRemain = 100000
+	const unitPrice = 0.08 // USD per 1M tokens
+	const estimatedTokens = 118800
+
+	// 预扣：估算 108,000 token × 1.1 缓冲 = 118,800 token
+	preConsumed := common.QuotaRound(unitPrice * estimatedTokens / 1e6 * common.QuotaPerUnit)
+	// 实际：上游返回 108,000 token
+	actualTokens := 108000
+	wantQuota := common.QuotaRound(unitPrice * float64(actualTokens) / 1e6 * common.QuotaPerUnit)
+	require.Greater(t, preConsumed, wantQuota)
+
+	seedUser(t, userID, initQuota)
+	seedToken(t, tokenID, userID, "sk-resolution-tokens", tokenRemain)
+	seedChannel(t, channelID)
+
+	task := makeTask(userID, channelID, preConsumed, tokenID, BillingSourceWallet, 0)
+	task.PrivateData.BillingContext.ModelPrice = unitPrice
+	task.PrivateData.BillingContext.Resolution = "720P"
+	task.PrivateData.BillingContext.BillingUnit = billing_setting.ResolutionUnitMillionTokens
+	task.PrivateData.BillingContext.OtherRatios = map[string]float64{
+		utils.ResolutionTokensRatioKey: float64(estimatedTokens) / 1e6,
+	}
+
+	adaptor := &mockAdaptor{adjustReturn: 0}
+	taskResult := &relaycommon.TaskInfo{
+		Status:          model.TaskStatusSuccess,
+		TotalTokens:     actualTokens,
+		TokensFromUsage: true,
+	}
+
+	settleTaskBillingOnComplete(ctx, adaptor, task, taskResult)
+
+	// 多退少补：按真实 token 结算，退还估算与真实的差额
+	// （seed 的余额已反映预扣结果，因此这里只应在余额上增加退款）
+	assert.Equal(t, wantQuota, task.Quota)
+	assert.Equal(t, initQuota+(preConsumed-wantQuota), getUserQuota(t, userID))
+	assert.Equal(t, tokenRemain+(preConsumed-wantQuota), getTokenRemainQuota(t, tokenID))
+	assert.Equal(t, int64(1), countLogs(t))
+}
+
+func TestSettle_ResolutionTokenBilling_KeepsEstimateWithoutUsage(t *testing.T) {
+	truncate(t)
+	ctx := context.Background()
+
+	const userID, tokenID, channelID = 42, 42, 42
+	const initQuota = 100000
+	const tokenRemain = 100000
+	const preConsumed = 4752
+
+	seedUser(t, userID, initQuota)
+	seedToken(t, tokenID, userID, "sk-resolution-no-usage", tokenRemain)
+	seedChannel(t, channelID)
+
+	task := makeTask(userID, channelID, preConsumed, tokenID, BillingSourceWallet, 0)
+	task.PrivateData.BillingContext.BillingUnit = billing_setting.ResolutionUnitMillionTokens
+
+	adaptor := &mockAdaptor{adjustReturn: 0}
+	// 上游只给出折算后的扣费数值，不能当成 token 用量结算
+	taskResult := &relaycommon.TaskInfo{Status: model.TaskStatusSuccess, TotalTokens: 9999}
+
+	settleTaskBillingOnComplete(ctx, adaptor, task, taskResult)
+
+	assert.Equal(t, preConsumed, task.Quota)
+	assert.Equal(t, initQuota, getUserQuota(t, userID))
+	assert.Equal(t, tokenRemain, getTokenRemainQuota(t, tokenID))
+	assert.Equal(t, int64(0), countLogs(t))
+}
+
+// 结算时以任务快照的计费单位为准：seedance 等自带 token 计费的任务在提交时
+// 会把 BillingUnit 清空，即便后台把该模型配成「按百万 token」也不会被接管。
+func TestTaskUsesResolutionTokenBillingTrustsTaskSnapshot(t *testing.T) {
+	restore := map[string]string{
+		"billing_setting.billing_mode":    `{}`,
+		"billing_setting.resolution_unit": `{}`,
+	}
+	t.Cleanup(func() {
+		require.NoError(t, config.GlobalConfig.LoadFromDB(restore))
+	})
+	require.NoError(t, config.GlobalConfig.LoadFromDB(map[string]string{
+		"billing_setting.billing_mode":    `{"seedance-model":"resolution"}`,
+		"billing_setting.resolution_unit": `{"seedance-model":"million_tokens"}`,
+	}))
+
+	task := &model.Task{
+		Properties: model.Properties{OriginModelName: "seedance-model"},
+		PrivateData: model.TaskPrivateData{
+			BillingContext: &model.TaskBillingContext{OriginModelName: "seedance-model"},
+		},
+	}
+
+	// 适配器自带 token 计费 → 快照单位为空
+	require.False(t, taskUsesResolutionTokenBilling(task))
+
+	task.PrivateData.BillingContext.BillingUnit = billing_setting.ResolutionUnitMillionTokens
+	require.True(t, taskUsesResolutionTokenBilling(task))
+
+	task.PrivateData.BillingContext.BillingUnit = billing_setting.ResolutionUnitSecond
+	require.False(t, taskUsesResolutionTokenBilling(task))
 }
 
 func TestSettle_NonPerCallBilling_AppliesAdaptorAdjustment(t *testing.T) {

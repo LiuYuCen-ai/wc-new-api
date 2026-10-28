@@ -333,6 +333,11 @@ func (a *TaskAdaptor) ParseTaskResult(respBody []byte) (*relaycommon.TaskInfo, e
 		// 解析 usage 信息用于按倍率计费
 		taskResult.CompletionTokens = resTask.Usage.CompletionTokens
 		taskResult.TotalTokens = resTask.Usage.TotalTokens
+		// 上游返回真实 token 用量，可直接用于按百万 token 结算
+		taskResult.TokensFromUsage = taskResult.TotalTokens > 0 || taskResult.CompletionTokens > 0
+		if taskResult.TotalTokens <= 0 {
+			taskResult.TotalTokens = taskResult.CompletionTokens
+		}
 	case "failed":
 		taskResult.Status = model.TaskStatusFailure
 		taskResult.Progress = "100%"

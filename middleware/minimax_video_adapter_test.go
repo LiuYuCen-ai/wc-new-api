@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/QuantumNous/new-api/common"
+	"github.com/QuantumNous/new-api/constant"
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -45,10 +46,25 @@ func TestMiniMaxVideoRequestConvertRewritesV2Query(t *testing.T) {
 	engine.GET("/v2/query/video_generation/:task_id", MiniMaxVideoRequestConvert(), func(c *gin.Context) {
 		assert.Equal(t, "/v1/video/generations/424010985738629", c.Request.URL.Path)
 		assert.Equal(t, "424010985738629", c.GetString("task_id"))
+		assert.Equal(t, constant.TaskResponseFormatMiniMaxV2, c.GetString(constant.TaskResponseFormatKey))
 		c.Status(http.StatusOK)
 	})
 
 	req := httptest.NewRequest(http.MethodGet, "/v2/query/video_generation/424010985738629", nil)
+	rec := httptest.NewRecorder()
+	engine.ServeHTTP(rec, req)
+	require.Equal(t, http.StatusOK, rec.Code)
+}
+
+func TestMiniMaxVideoRequestConvertKeepsUnifiedFormatForV1Query(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	engine := gin.New()
+	engine.GET("/v1/query/video_generation", MiniMaxVideoRequestConvert(), func(c *gin.Context) {
+		assert.Empty(t, c.GetString(constant.TaskResponseFormatKey))
+		c.Status(http.StatusOK)
+	})
+
+	req := httptest.NewRequest(http.MethodGet, "/v1/query/video_generation?task_id=abc", nil)
 	rec := httptest.NewRecorder()
 	engine.ServeHTTP(rec, req)
 	require.Equal(t, http.StatusOK, rec.Code)

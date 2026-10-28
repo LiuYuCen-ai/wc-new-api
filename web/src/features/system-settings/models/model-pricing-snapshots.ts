@@ -1,25 +1,14 @@
-/*
-Copyright (C) 2023-2026 QuantumNous
-
-This program is free software: you can redistribute it and/or modify
-it under the terms of the GNU Affero General Public License as
-published by the Free Software Foundation, either version 3 of the
-License, or (at your option) any later version.
-
-This program is distributed in the hope that it will be useful,
-but WITHOUT ANY WARRANTY; without even the implied warranty of
-MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-GNU Affero General Public License for more details.
-
-You should have received a copy of the GNU Affero General Public License
-along with this program. If not, see <https://www.gnu.org/licenses/>.
-
-For commercial licensing, please contact support@quantumnous.com
-*/
 import { splitBillingExprAndRequestRules } from '@/features/pricing/lib/billing-expr'
 
 import { safeJsonParse } from '../utils/json-parser'
 import { formatPricingNumber } from './pricing-format'
+import {
+  isTokenBillingUnit,
+  normalizeResolutionBillingUnit,
+  parseVideoInputPriceMap,
+  type ResolutionBillingUnit,
+  type VideoInputPriceConfig,
+} from './resolution-pricing'
 
 const jsonParseCache = new Map<string, unknown>()
 const JSON_PARSE_CACHE_LIMIT = 128
@@ -61,6 +50,8 @@ export type ModelPricingSnapshotInput = {
   billingMode: string
   billingExpr: string
   resolutionPrice: string
+  resolutionUnit: string
+  videoInputPrice?: string
 }
 
 export type ModelPricingSnapshot = {
@@ -77,6 +68,9 @@ export type ModelPricingSnapshot = {
   billingExpr?: string
   requestRuleExpr?: string
   resolutionPrices?: Record<string, number>
+  resolutionUnit?: ResolutionBillingUnit
+  /** Seedance 视频输入计费覆盖（¥/百万 token），未配置时为空。 */
+  videoInputPrice?: VideoInputPriceConfig
   hasConflict: boolean
 }
 
@@ -149,9 +143,12 @@ export const getPriceSummary = (
     const entries = Object.entries(row.resolutionPrices ?? {})
     if (entries.length === 0) return t('Unset price')
     const [resolution, price] = entries[0]
+    const unitSuffix = isTokenBillingUnit(row.resolutionUnit)
+      ? ` / ${t('1M tokens')}`
+      : ''
     return entries.length > 1
-      ? `${resolution} $${price} · ${entries.length} ${t('resolutions')}`
-      : `${resolution} $${price}`
+      ? `${resolution} $${price}${unitSuffix} · ${entries.length} ${t('resolutions')}`
+      : `${resolution} $${price}${unitSuffix}`
   }
   if (row.billingMode === 'per-request') {
     return row.price ? `$${row.price} / ${t('request')}` : t('Unset price')
@@ -184,7 +181,9 @@ export const getPriceDetail = (
       : t('Expression based')
   }
   if (row.billingMode === 'resolution') {
-    return t('Price × seconds by resolution')
+    return isTokenBillingUnit(row.resolutionUnit)
+      ? t('Price × tokens by resolution (estimated, reconciled with usage)')
+      : t('Price × seconds by resolution')
   }
   if (row.billingMode === 'per-request') {
     return t('Fixed request price')
@@ -219,10 +218,24 @@ export const buildModelSnapshots = ({
   billingMode,
   billingExpr,
   resolutionPrice = '{}',
+  resolutionUnit = '{}',
+  videoInputPrice = '{}',
 }: ModelPricingSnapshotInput): ModelPricingSnapshot[] => {
-  const priceMap = parseJsonCached<Record<string, number>>(modelPrice, {}, 'model prices')
-  const ratioMap = parseJsonCached<Record<string, number>>(modelRatio, {}, 'model ratios')
-  const cacheMap = parseJsonCached<Record<string, number>>(cacheRatio, {}, 'cache ratios')
+  const priceMap = parseJsonCached<Record<string, number>>(
+    modelPrice,
+    {},
+    'model prices'
+  )
+  const ratioMap = parseJsonCached<Record<string, number>>(
+    modelRatio,
+    {},
+    'model ratios'
+  )
+  const cacheMap = parseJsonCached<Record<string, number>>(
+    cacheRatio,
+    {},
+    'cache ratios'
+  )
   const createCacheMap = parseJsonCached<Record<string, number>>(
     createCacheRatio,
     {},
@@ -233,8 +246,16 @@ export const buildModelSnapshots = ({
     {},
     'completion ratios'
   )
-  const imageMap = parseJsonCached<Record<string, number>>(imageRatio, {}, 'image ratios')
-  const audioMap = parseJsonCached<Record<string, number>>(audioRatio, {}, 'audio ratios')
+  const imageMap = parseJsonCached<Record<string, number>>(
+    imageRatio,
+    {},
+    'image ratios'
+  )
+  const audioMap = parseJsonCached<Record<string, number>>(
+    audioRatio,
+    {},
+    'audio ratios'
+  )
   const audioCompletionMap = parseJsonCached<Record<string, number>>(
     audioCompletionRatio,
     {},
@@ -253,6 +274,12 @@ export const buildModelSnapshots = ({
   const resolutionPriceMap = parseJsonCached<
     Record<string, Record<string, number>>
   >(resolutionPrice, {}, 'resolution prices')
+  const resolutionUnitMap = parseJsonCached<Record<string, string>>(
+    resolutionUnit,
+    {},
+    'resolution unit'
+  )
+  const videoInputPriceMap = parseVideoInputPriceMap(videoInputPrice)
 
   const modelNames = new Set([
     ...Object.keys(priceMap),
@@ -266,6 +293,8 @@ export const buildModelSnapshots = ({
     ...Object.keys(billingModeMap),
     ...Object.keys(billingExprMap),
     ...Object.keys(resolutionPriceMap),
+    ...Object.keys(resolutionUnitMap),
+    ...Object.keys(videoInputPriceMap),
   ])
 
   return [...modelNames].map((name) => {
@@ -277,6 +306,7 @@ export const buildModelSnapshots = ({
     const image = imageMap[name]?.toString() || ''
     const audio = audioMap[name]?.toString() || ''
     const audioCompletion = audioCompletionMap[name]?.toString() || ''
+    const modelVideoInputPrice = videoInputPriceMap[name]
 
     const modeForModel = billingModeMap[name]
     if (modeForModel === 'tiered_expr') {
@@ -296,6 +326,7 @@ export const buildModelSnapshots = ({
         imageRatio: image,
         audioRatio: audio,
         audioCompletionRatio: audioCompletion,
+        videoInputPrice: modelVideoInputPrice,
         hasConflict: false,
       }
     }
@@ -305,6 +336,7 @@ export const buildModelSnapshots = ({
         name,
         billingMode: 'resolution',
         resolutionPrices: resolutionPriceMap[name],
+        resolutionUnit: normalizeResolutionBillingUnit(resolutionUnitMap[name]),
         price,
         ratio,
         cacheRatio: cache,
@@ -313,6 +345,7 @@ export const buildModelSnapshots = ({
         imageRatio: image,
         audioRatio: audio,
         audioCompletionRatio: audioCompletion,
+        videoInputPrice: modelVideoInputPrice,
         hasConflict: false,
       }
     }
@@ -327,6 +360,7 @@ export const buildModelSnapshots = ({
       imageRatio: image,
       audioRatio: audio,
       audioCompletionRatio: audioCompletion,
+      videoInputPrice: modelVideoInputPrice,
       billingMode: price !== '' ? 'per-request' : 'per-token',
       hasConflict:
         price !== '' &&
@@ -356,5 +390,7 @@ export const getSnapshotSignature = (snapshot?: ModelPricingSnapshot) => {
     billingExpr: snapshot.billingExpr || '',
     requestRuleExpr: snapshot.requestRuleExpr || '',
     resolutionPrices: snapshot.resolutionPrices || {},
+    resolutionUnit: snapshot.resolutionUnit || '',
+    videoInputPrice: snapshot.videoInputPrice || null,
   })
 }

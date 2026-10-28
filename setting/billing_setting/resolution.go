@@ -7,8 +7,8 @@ import (
 )
 
 // NormalizeResolution maps request / config labels onto a stable lookup key.
-// Canonical form matches Ali / MiniMax docs: 720P, 768P, 2K, 4K.
-// Examples: 720p → 720P, 4k → 4K, 1920x1080 → 1080P, 768 → 768P.
+// Canonical form matches provider docs: 720P, 768P, 1K, 2K, 4K.
+// Examples: 720p → 720P, 4k → 4K, 1k → 1K, 1920x1080 → 1080P, 768 → 768P.
 func NormalizeResolution(raw string) string {
 	s := strings.ToLower(strings.TrimSpace(raw))
 	if s == "" {
@@ -21,6 +21,11 @@ func NormalizeResolution(raw string) string {
 	}
 
 	switch s {
+	case "1k":
+		// 1K is a first-class provider label (sent upstream as-is), not an
+		// alias of 1080P: keep it separate so its own price tier, log entry
+		// and pre-charge estimate stay distinguishable from 1080P.
+		return "1K"
 	case "2k", "1440p", "1440":
 		return "2K"
 	case "4k", "2160p", "2160":

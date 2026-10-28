@@ -1,21 +1,3 @@
-/*
-Copyright (C) 2023-2026 QuantumNous
-
-This program is free software: you can redistribute it and/or modify
-it under the terms of the GNU Affero General Public License as
-published by the Free Software Foundation, either version 3 of the
-License, or (at your option) any later version.
-
-This program is distributed in the hope that it will be useful,
-but WITHOUT ANY WARRANTY; without even the implied warranty of
-MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-GNU Affero General Public License for more details.
-
-You should have received a copy of the GNU Affero General Public License
-along with this program. If not, see <https://www.gnu.org/licenses/>.
-
-For commercial licensing, please contact support@quantumnous.com
-*/
 import type {
   ColumnFiltersState,
   OnChangeFn,
@@ -65,7 +47,11 @@ import {
   type ModelRow,
 } from './model-pricing-snapshots'
 import { buildModelRatioColumns } from './model-ratio-table-columns'
-import { defaultResolutionPrice } from './resolution-pricing'
+import {
+  DEFAULT_RESOLUTION_BILLING_UNIT,
+  normalizeResolutionBillingUnit,
+  parseVideoInputPriceMap,
+} from './resolution-pricing'
 
 type ModelRatioVisualEditorProps = {
   savedModelPrice: string
@@ -79,6 +65,8 @@ type ModelRatioVisualEditorProps = {
   savedBillingMode: string
   savedBillingExpr: string
   savedResolutionPrice: string
+  savedResolutionUnit: string
+  savedVideoInputPrice: string
   modelPrice: string
   modelRatio: string
   cacheRatio: string
@@ -90,6 +78,8 @@ type ModelRatioVisualEditorProps = {
   billingMode: string
   billingExpr: string
   resolutionPrice: string
+  resolutionUnit: string
+  videoInputPrice: string
   candidateModelNames?: string[]
   candidateModelsLoading?: boolean
   filterMode?: 'all' | 'unset'
@@ -122,6 +112,8 @@ const ModelRatioVisualEditorComponent = forwardRef<
     savedBillingMode,
     savedBillingExpr,
     savedResolutionPrice,
+    savedResolutionUnit,
+    savedVideoInputPrice,
     modelPrice,
     modelRatio,
     cacheRatio,
@@ -133,6 +125,8 @@ const ModelRatioVisualEditorComponent = forwardRef<
     billingMode,
     billingExpr,
     resolutionPrice,
+    resolutionUnit,
+    videoInputPrice,
     candidateModelNames,
     candidateModelsLoading,
     filterMode = 'all',
@@ -224,6 +218,8 @@ const ModelRatioVisualEditorComponent = forwardRef<
       billingMode: savedBillingMode,
       billingExpr: savedBillingExpr,
       resolutionPrice: savedResolutionPrice,
+      resolutionUnit: savedResolutionUnit,
+      videoInputPrice: savedVideoInputPrice,
     }),
     [
       savedAudioCompletionRatio,
@@ -237,6 +233,8 @@ const ModelRatioVisualEditorComponent = forwardRef<
       savedModelPrice,
       savedModelRatio,
       savedResolutionPrice,
+      savedResolutionUnit,
+      savedVideoInputPrice,
     ]
   )
 
@@ -253,6 +251,8 @@ const ModelRatioVisualEditorComponent = forwardRef<
       billingMode,
       billingExpr,
       resolutionPrice,
+      resolutionUnit,
+      videoInputPrice,
     }),
     [
       audioCompletionRatio,
@@ -266,6 +266,8 @@ const ModelRatioVisualEditorComponent = forwardRef<
       modelPrice,
       modelRatio,
       resolutionPrice,
+      resolutionUnit,
+      videoInputPrice,
     ]
   )
 
@@ -281,7 +283,9 @@ const ModelRatioVisualEditorComponent = forwardRef<
       savedAudioCompletionRatio === audioCompletionRatio &&
       savedBillingMode === billingMode &&
       savedBillingExpr === billingExpr &&
-      savedResolutionPrice === resolutionPrice,
+      savedResolutionPrice === resolutionPrice &&
+      savedResolutionUnit === resolutionUnit &&
+      savedVideoInputPrice === videoInputPrice,
     [
       audioCompletionRatio,
       audioRatio,
@@ -294,6 +298,8 @@ const ModelRatioVisualEditorComponent = forwardRef<
       modelPrice,
       modelRatio,
       resolutionPrice,
+      resolutionUnit,
+      videoInputPrice,
       savedAudioCompletionRatio,
       savedAudioRatio,
       savedBillingExpr,
@@ -305,6 +311,8 @@ const ModelRatioVisualEditorComponent = forwardRef<
       savedModelPrice,
       savedModelRatio,
       savedResolutionPrice,
+      savedResolutionUnit,
+      savedVideoInputPrice,
     ]
   )
 
@@ -400,6 +408,8 @@ const ModelRatioVisualEditorComponent = forwardRef<
         billingExpr: editableModel.billingExpr,
         requestRuleExpr: editableModel.requestRuleExpr,
         resolutionPrices: editableModel.resolutionPrices,
+        resolutionUnit: editableModel.resolutionUnit,
+        videoInputPrice: editableModel.videoInputPrice,
       })
       setEditorOpen(true)
       if (isMobile) setSheetOpen(true)
@@ -475,6 +485,11 @@ const ModelRatioVisualEditorComponent = forwardRef<
       const resolutionPriceMap = safeJsonParse<
         Record<string, Record<string, number>>
       >(resolutionPrice, { fallback: {}, silent: true })
+      const resolutionUnitMap = safeJsonParse<Record<string, string>>(
+        resolutionUnit,
+        { fallback: {}, silent: true }
+      )
+      const videoInputPriceMap = parseVideoInputPriceMap(videoInputPrice)
 
       delete priceMap[name]
       delete ratioMap[name]
@@ -487,6 +502,8 @@ const ModelRatioVisualEditorComponent = forwardRef<
       delete billingModeMap[name]
       delete billingExprMap[name]
       delete resolutionPriceMap[name]
+      delete resolutionUnitMap[name]
+      delete videoInputPriceMap[name]
 
       onChange('ModelPrice', JSON.stringify(priceMap, null, 2))
       onChange('ModelRatio', JSON.stringify(ratioMap, null, 2))
@@ -510,6 +527,14 @@ const ModelRatioVisualEditorComponent = forwardRef<
       onChange(
         'billing_setting.resolution_price',
         JSON.stringify(resolutionPriceMap, null, 2)
+      )
+      onChange(
+        'billing_setting.resolution_unit',
+        JSON.stringify(resolutionUnitMap, null, 2)
+      )
+      onChange(
+        'billing_setting.video_input_price',
+        JSON.stringify(videoInputPriceMap, null, 2)
       )
 
       if (editData?.name === name) {
@@ -537,6 +562,8 @@ const ModelRatioVisualEditorComponent = forwardRef<
       billingMode,
       billingExpr,
       resolutionPrice,
+      resolutionUnit,
+      videoInputPrice,
       onChange,
       editData,
       isSaving,
@@ -636,6 +663,11 @@ const ModelRatioVisualEditorComponent = forwardRef<
       const resolutionPriceMap = safeJsonParse<
         Record<string, Record<string, number>>
       >(resolutionPrice, { fallback: {}, silent: true })
+      const resolutionUnitMap = safeJsonParse<Record<string, string>>(
+        resolutionUnit,
+        { fallback: {}, silent: true }
+      )
+      const videoInputPriceMap = parseVideoInputPriceMap(videoInputPrice)
 
       const setIfPresent = (
         target: Record<string, number>,
@@ -659,6 +691,22 @@ const ModelRatioVisualEditorComponent = forwardRef<
         delete billingModeMap[name]
         delete billingExprMap[name]
         delete resolutionPriceMap[name]
+        delete resolutionUnitMap[name]
+        delete videoInputPriceMap[name]
+
+        // Seedance 视频输入计费覆盖与计费模式无关，始终跟随模型保存。
+        // 逐分辨率有视频单价（resolutions）单独配置时同样需要保存。
+        const hasVideoInputResolutions =
+          !!data.videoInputPrice?.resolutions &&
+          Object.keys(data.videoInputPrice.resolutions).length > 0
+        if (
+          data.videoInputPrice &&
+          (data.videoInputPrice.no_video > 0 ||
+            data.videoInputPrice.video > 0 ||
+            hasVideoInputResolutions)
+        ) {
+          videoInputPriceMap[name] = data.videoInputPrice
+        }
 
         if (data.billingMode === 'tiered_expr') {
           const combined = combineBillingExpr(
@@ -683,12 +731,16 @@ const ModelRatioVisualEditorComponent = forwardRef<
           setIfPresent(audioCompletionMap, name, data.audioCompletionRatio)
         } else if (data.billingMode === 'resolution') {
           billingModeMap[name] = 'resolution'
+          const unit = normalizeResolutionBillingUnit(data.resolutionUnit)
+          if (unit !== DEFAULT_RESOLUTION_BILLING_UNIT) {
+            resolutionUnitMap[name] = unit
+          }
+          // 只落当前单位的价格表：循环开头已删除该模型的所有价格条目，
+          // 因此另一张表与固定价 / 比例价等「其他价格」会一并清空。
+          //   - 按秒：resolution_price；
+          //   - 按 token：video_input_price.resolutions（由上方 videoInputPrice 写入）。
           if (data.resolutionPrices) {
             resolutionPriceMap[name] = data.resolutionPrices
-            const fallbackPrice = defaultResolutionPrice(data.resolutionPrices)
-            if (fallbackPrice !== undefined) {
-              priceMap[name] = fallbackPrice
-            }
           }
         } else if (data.price && data.price !== '') {
           setIfPresent(priceMap, name, data.price)
@@ -726,6 +778,14 @@ const ModelRatioVisualEditorComponent = forwardRef<
         'billing_setting.resolution_price',
         JSON.stringify(resolutionPriceMap, null, 2)
       )
+      onChange(
+        'billing_setting.resolution_unit',
+        JSON.stringify(resolutionUnitMap, null, 2)
+      )
+      onChange(
+        'billing_setting.video_input_price',
+        JSON.stringify(videoInputPriceMap, null, 2)
+      )
     },
     [
       modelPrice,
@@ -739,6 +799,8 @@ const ModelRatioVisualEditorComponent = forwardRef<
       billingMode,
       billingExpr,
       resolutionPrice,
+      resolutionUnit,
+      videoInputPrice,
       onChange,
     ]
   )
@@ -979,6 +1041,7 @@ export const ModelRatioVisualEditor = memo(
       prevProps.savedBillingMode === nextProps.savedBillingMode &&
       prevProps.savedBillingExpr === nextProps.savedBillingExpr &&
       prevProps.savedResolutionPrice === nextProps.savedResolutionPrice &&
+      prevProps.savedVideoInputPrice === nextProps.savedVideoInputPrice &&
       prevProps.modelPrice === nextProps.modelPrice &&
       prevProps.modelRatio === nextProps.modelRatio &&
       prevProps.cacheRatio === nextProps.cacheRatio &&
@@ -990,6 +1053,7 @@ export const ModelRatioVisualEditor = memo(
       prevProps.billingMode === nextProps.billingMode &&
       prevProps.billingExpr === nextProps.billingExpr &&
       prevProps.resolutionPrice === nextProps.resolutionPrice &&
+      prevProps.videoInputPrice === nextProps.videoInputPrice &&
       prevProps.candidateModelNames === nextProps.candidateModelNames &&
       prevProps.candidateModelsLoading === nextProps.candidateModelsLoading &&
       prevProps.filterMode === nextProps.filterMode &&

@@ -24,7 +24,9 @@ import (
 	"github.com/QuantumNous/new-api/relaykit/types"
 	"github.com/QuantumNous/new-api/service"
 	"github.com/QuantumNous/new-api/setting"
+	"github.com/QuantumNous/new-api/setting/billing_setting"
 	"github.com/QuantumNous/new-api/setting/operation_setting"
+	"github.com/QuantumNous/new-api/utils"
 
 	"github.com/bytedance/gopkg/util/gopool"
 	"github.com/samber/lo"
@@ -379,8 +381,8 @@ func processChannelError(c *gin.Context, channelError types.ChannelError, err *t
 		userGroup := c.GetString("group")
 		channelId := c.GetInt("channel_id")
 		other := make(map[string]interface{})
-		if c.Request != nil && c.Request.URL != nil {
-			other["request_path"] = c.Request.URL.Path
+		if p := common.OriginalRequestPath(c); p != "" {
+			other["request_path"] = p
 		}
 		other["error_type"] = err.GetErrorType()
 		other["error_code"] = err.GetErrorCode()
@@ -597,7 +599,14 @@ func RelayTask(c *gin.Context) {
 			OtherRatios:     relayInfo.PriceData.OtherRatios(),
 			OriginModelName: relayInfo.OriginModelName,
 			Resolution:      relayInfo.PriceData.Resolution,
-			PerCallBilling:  common.StringsContains(constant.TaskPricePatches, relayInfo.OriginModelName) || relayInfo.PriceData.UsePrice,
+			BillingUnit:     relayInfo.PriceData.BillingUnit,
+			// 记下提交时命中的视频输入档位，结算/退款日志沿用同一档位展示单价，
+			// 否则「预扣按有视频价、结算按无视频价」会显示成两个价格。
+			VideoInputTier: videoInputTierOfRequest(c),
+			// 按百万 token 计费的视频模型需要在任务完成后按真实 token 多退少补，
+			// 因此不能标记为「按次计费」。
+			PerCallBilling: common.StringsContains(constant.TaskPricePatches, relayInfo.OriginModelName) ||
+				(relayInfo.PriceData.UsePrice && relayInfo.PriceData.BillingUnit != billing_setting.ResolutionUnitMillionTokens),
 		}
 		task.Quota = result.Quota
 		task.Data = result.TaskData
@@ -619,6 +628,14 @@ func respondTaskError(c *gin.Context, taskErr *taskdto.TaskError) {
 		taskErr.Message = "当前分组上游负载已饱和，请稍后再试"
 	}
 	c.JSON(taskErr.StatusCode, taskErr)
+}
+
+// videoInputTierOfRequest 返回本次请求命中的视频输入档位，供任务快照与后续结算日志复用。
+func videoInputTierOfRequest(c *gin.Context) string {
+	if utils.RequestHasVideoInput(c) {
+		return "video"
+	}
+	return "no_video"
 }
 
 func attachTaskPrompt(c *gin.Context, task *model.Task) {

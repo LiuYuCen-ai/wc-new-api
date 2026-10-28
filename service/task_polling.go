@@ -19,6 +19,7 @@ import (
 	"github.com/QuantumNous/new-api/relay/channel/task/taskcommon"
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
 	"github.com/QuantumNous/new-api/relaykit/dto"
+	"github.com/QuantumNous/new-api/setting/billing_setting"
 
 	"github.com/bytedance/gopkg/util/gopool"
 	"github.com/samber/lo"
@@ -642,14 +643,24 @@ func truncateBase64(s string) string {
 }
 
 // settleTaskBillingOnComplete 任务完成时的统一计费调整。
-// 优先级：1. adaptor.AdjustBillingOnComplete 返回正数 → 使用 adaptor 计算的额度
+// 优先级：0. 按百万 token 计费的视频模型 → 用上游返回的真实 token 多退少补
 //
-//  2. taskResult.TotalTokens > 0 → 按 token 重算
-//  3. 都不满足 → 保持预扣额度不变
+//	1. adaptor.AdjustBillingOnComplete 返回正数 → 使用 adaptor 计算的额度
+//	2. taskResult.TotalTokens > 0 → 按 token 重算
+//	3. 都不满足 → 保持预扣额度不变
 func settleTaskBillingOnComplete(ctx context.Context, adaptor TaskPollingAdaptor, task *model.Task, taskResult *relaycommon.TaskInfo) {
 	// 0. 按次计费的任务不做差额结算
 	if bc := task.PrivateData.BillingContext; bc != nil && bc.PerCallBilling {
 		logger.LogInfo(ctx, fmt.Sprintf("任务 %s 按次计费，跳过差额结算", task.TaskID))
+		return
+	}
+	// 0.1 按百万 token 计费的视频模型：预扣用估算 token，完成后按上游 usage 结算
+	if taskUsesResolutionTokenBilling(task) {
+		if taskResult.TokensFromUsage && taskResult.TotalTokens > 0 {
+			RecalculateTaskQuotaByVideoTokens(ctx, task, taskResult.TotalTokens)
+		} else {
+			logger.LogInfo(ctx, fmt.Sprintf("任务 %s 未返回 token usage，保留估算预扣额度", task.TaskID))
+		}
 		return
 	}
 	// 1. 优先让 adaptor 决定最终额度
@@ -663,4 +674,18 @@ func settleTaskBillingOnComplete(ctx context.Context, adaptor TaskPollingAdaptor
 		return
 	}
 	// 3. 无调整，保持预扣额度
+}
+
+// taskUsesResolutionTokenBilling 判断任务是否按「分辨率档位 + 百万 token」计费。
+// 以任务创建时快照的单位为准：seedance 等适配器自带 token 计费，提交时会把
+// BillingUnit 清空，这类任务继续走适配器/token 倍率结算。
+func taskUsesResolutionTokenBilling(task *model.Task) bool {
+	if task == nil {
+		return false
+	}
+	bc := task.PrivateData.BillingContext
+	if bc == nil {
+		return billing_setting.IsResolutionTokenBilling(taskModelName(task))
+	}
+	return bc.BillingUnit == billing_setting.ResolutionUnitMillionTokens
 }

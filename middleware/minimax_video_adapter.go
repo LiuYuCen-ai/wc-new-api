@@ -22,6 +22,8 @@ import (
 //	GET  /v1/query/video_generation?task_id=
 func MiniMaxVideoRequestConvert() func(c *gin.Context) {
 	return func(c *gin.Context) {
+		// 记录客户端真实路径（如 /v2/video_generation），日志展示用。
+		common.SaveOriginalRequestPath(c)
 		if c.Request.Method == http.MethodGet {
 			taskID := strings.TrimSpace(c.Param("task_id"))
 			if taskID == "" {
@@ -30,6 +32,11 @@ func MiniMaxVideoRequestConvert() func(c *gin.Context) {
 			if taskID == "" {
 				abortWithOpenAiMessage(c, http.StatusBadRequest, "task_id is required")
 				return
+			}
+			// /v2/* is MiniMax's native surface: remember it so the fetch
+			// endpoint can answer with the official {"task": {...}} envelope.
+			if strings.HasPrefix(c.Request.URL.Path, "/v2/") {
+				c.Set(constant.TaskResponseFormatKey, constant.TaskResponseFormatMiniMaxV2)
 			}
 			c.Request.URL.Path = "/v1/video/generations/" + taskID
 			c.Set("task_id", taskID)

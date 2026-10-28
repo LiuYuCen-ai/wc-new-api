@@ -20,6 +20,7 @@ import dayjs from '@/lib/dayjs'
 
 import {
   formatCurrencyFromUSD,
+  formatLogQuotaInDisplayCurrency,
   formatQuotaWithCurrency,
   getCurrencyDisplay,
   getCurrencyFractionDigits,
@@ -231,11 +232,13 @@ export function formatTimeStr(date: Date): string {
 }
 
 /**
- * Format quota for usage logs with higher precision
- * Uses 6 decimal places to show very small costs accurately
+ * Format quota for usage logs with higher precision.
+ *
+ * The amount follows the system display currency symbol and is shown as stored
+ * (no exchange-rate conversion), matching the log billing details breakdown.
  */
 export function formatLogQuota(quota: number): string {
-  return formatQuotaWithCurrency(quota, {
+  return formatLogQuotaInDisplayCurrency(quota, {
     digitsLarge: 4,
     digitsSmall: 6,
     abbreviate: false,

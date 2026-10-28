@@ -1,21 +1,3 @@
-/*
-Copyright (C) 2023-2026 QuantumNous
-
-This program is free software: you can redistribute it and/or modify
-it under the terms of the GNU Affero General Public License as
-published by the Free Software Foundation, either version 3 of the
-License, or (at your option) any later version.
-
-This program is distributed in the hope that it will be useful,
-but WITHOUT ANY WARRANTY; without even the implied warranty of
-MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-GNU Affero General Public License for more details.
-
-You should have received a copy of the GNU Affero General Public License
-along with this program. If not, see <https://www.gnu.org/licenses/>.
-
-For commercial licensing, please contact support@quantumnous.com
-*/
 import { zodResolver } from '@hookform/resolvers/zod'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
@@ -118,6 +100,8 @@ const createModelSchema = (t: Translate) =>
     BillingMode: createJsonStringField(t),
     BillingExpr: createJsonStringField(t),
     ResolutionPrice: createJsonStringField(t),
+    ResolutionUnit: createJsonStringField(t),
+    VideoInputPrice: createJsonStringField(t),
   })
 
 const createGroupSchema = (t: Translate) =>
@@ -154,6 +138,8 @@ function normalizeModelFormValues(defaults: ModelFormValues) {
     BillingMode: normalizeJsonString(defaults.BillingMode),
     BillingExpr: normalizeJsonString(defaults.BillingExpr),
     ResolutionPrice: normalizeJsonString(defaults.ResolutionPrice),
+    ResolutionUnit: normalizeJsonString(defaults.ResolutionUnit),
+    VideoInputPrice: normalizeJsonString(defaults.VideoInputPrice),
   }
 }
 
@@ -173,7 +159,9 @@ function modelFormValuesEqual(
     left.ExposeRatioEnabled === right.ExposeRatioEnabled &&
     left.BillingMode === right.BillingMode &&
     left.BillingExpr === right.BillingExpr &&
-    left.ResolutionPrice === right.ResolutionPrice
+    left.ResolutionPrice === right.ResolutionPrice &&
+    left.ResolutionUnit === right.ResolutionUnit &&
+    left.VideoInputPrice === right.VideoInputPrice
   )
 }
 
@@ -191,6 +179,8 @@ function formatModelFormValues(defaults: ModelFormValues): ModelFormValues {
     BillingMode: formatJsonForTextarea(defaults.BillingMode),
     BillingExpr: formatJsonForTextarea(defaults.BillingExpr),
     ResolutionPrice: formatJsonForTextarea(defaults.ResolutionPrice),
+    ResolutionUnit: formatJsonForTextarea(defaults.ResolutionUnit),
+    VideoInputPrice: formatJsonForTextarea(defaults.VideoInputPrice),
   }
 }
 type RatioTabId =
@@ -237,7 +227,9 @@ export function RatioSettingsCard({
     },
   })
 
-  const modelNormalizedDefaults = useRef(normalizeModelFormValues(modelDefaults))
+  const modelNormalizedDefaults = useRef(
+    normalizeModelFormValues(modelDefaults)
+  )
   const [savedModelValues, setSavedModelValues] = useState(
     modelNormalizedDefaults.current
   )
@@ -281,9 +273,7 @@ export function RatioSettingsCard({
 
   useEffect(() => {
     const nextNormalized = normalizeModelFormValues(modelDefaults)
-    if (
-      modelFormValuesEqual(nextNormalized, modelNormalizedDefaults.current)
-    ) {
+    if (modelFormValuesEqual(nextNormalized, modelNormalizedDefaults.current)) {
       return
     }
 
@@ -334,12 +324,16 @@ export function RatioSettingsCard({
         BillingMode: normalizeJsonString(values.BillingMode),
         BillingExpr: normalizeJsonString(values.BillingExpr),
         ResolutionPrice: normalizeJsonString(values.ResolutionPrice),
+        ResolutionUnit: normalizeJsonString(values.ResolutionUnit),
+        VideoInputPrice: normalizeJsonString(values.VideoInputPrice),
       }
 
       const apiKeyMap: Record<string, string> = {
         BillingMode: 'billing_setting.billing_mode',
         BillingExpr: 'billing_setting.billing_expr',
         ResolutionPrice: 'billing_setting.resolution_price',
+        ResolutionUnit: 'billing_setting.resolution_unit',
+        VideoInputPrice: 'billing_setting.video_input_price',
       }
 
       const updates = (
@@ -387,12 +381,12 @@ export function RatioSettingsCard({
           BillingMode: formatJsonForTextarea(values.BillingMode),
           BillingExpr: formatJsonForTextarea(values.BillingExpr),
           ResolutionPrice: formatJsonForTextarea(values.ResolutionPrice),
+          ResolutionUnit: formatJsonForTextarea(values.ResolutionUnit),
+          VideoInputPrice: formatJsonForTextarea(values.VideoInputPrice),
         })
       } catch (error) {
         toast.error(
-          error instanceof Error
-            ? error.message
-            : t('Failed to update setting')
+          error instanceof Error ? error.message : t('Failed to update setting')
         )
       } finally {
         setIsSavingModelRatios(false)

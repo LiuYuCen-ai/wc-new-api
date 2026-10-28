@@ -1,21 +1,3 @@
-/*
-Copyright (C) 2023-2026 QuantumNous
-
-This program is free software: you can redistribute it and/or modify
-it under the terms of the GNU Affero General Public License as
-published by the Free Software Foundation, either version 3 of the
-License, or (at your option) any later version.
-
-This program is distributed in the hope that it will be useful,
-but WITHOUT ANY WARRANTY; without even the implied warranty of
-MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-GNU Affero General Public License for more details.
-
-You should have received a copy of the GNU Affero General Public License
-along with this program. If not, see <https://www.gnu.org/licenses/>.
-
-For commercial licensing, please contact support@quantumnous.com
-*/
 import { formatCurrencyFromUSD } from '@/lib/currency'
 
 import { QUOTA_TYPE_VALUES, TOKEN_UNIT_DIVISORS } from '../constants'
@@ -319,6 +301,108 @@ export function isResolutionPricingModel(model: PricingModel): boolean {
   return (
     model.billing_mode === 'resolution' &&
     getResolutionPriceEntries(model).length > 0
+  )
+}
+
+/**
+ * 逐分辨率「有视频输入单价」覆盖（元/百万 token）。
+ * 仅使用显式配置的键（归一化匹配），未配置返回 undefined，
+ * 由调用方回退「全局两档单价的倍率」换算。
+ */
+export function getResolutionVideoPrice(
+  model: PricingModel,
+  resolution: string
+): number | undefined {
+  const resolutions = model.video_input_resolutions
+  if (!resolutions || !resolution) return undefined
+  const want = resolution.trim().toLowerCase()
+  if (resolutions[resolution] !== undefined) return resolutions[resolution]
+  for (const [key, price] of Object.entries(resolutions)) {
+    if (key.trim().toLowerCase() === want && Number.isFinite(price)) {
+      return price
+    }
+  }
+  return undefined
+}
+
+export type VideoInputPriceEntry = {
+  key: 'no_video' | 'video'
+  labelKey: string
+  price: number
+}
+
+/**
+ * 视频输入计费两档单价（按 token 计费的模型才有意义）：
+ * 无视频输入 / 有视频输入（元/百万 token）。
+ */
+export function getVideoInputPriceEntries(
+  model: PricingModel
+): VideoInputPriceEntry[] {
+  if (model.quota_type === QUOTA_TYPE_VALUES.REQUEST) return []
+  const prices = model.video_input_price
+  if (!prices) return []
+
+  const entries: VideoInputPriceEntry[] = []
+  const noVideo = Number(prices.no_video)
+  const video = Number(prices.video)
+  if (Number.isFinite(noVideo) && noVideo > 0) {
+    entries.push({
+      key: 'no_video',
+      labelKey: 'No video input price',
+      price: noVideo,
+    })
+  }
+  if (Number.isFinite(video) && video > 0) {
+    entries.push({
+      key: 'video',
+      labelKey: 'With video input price',
+      price: video,
+    })
+  }
+  return entries
+}
+
+export function isVideoInputPricingModel(model: PricingModel): boolean {
+  return getVideoInputPriceEntries(model).length > 0
+}
+
+// 视频输入单价按 CNY（元/百万 token）配置，定价页统一以 USD 中转展示，
+// 由 formatCurrencyFromUSD 按展示货币换回。
+export function formatVideoInputDisplayPrice(
+  model: PricingModel,
+  cnyPrice: number,
+  showWithRecharge = false,
+  priceRate = 1,
+  usdExchangeRate = 1,
+  selectedGroup?: string
+): string {
+  const rate = usdExchangeRate > 0 ? usdExchangeRate : 1
+  return formatResolutionDisplayPrice(
+    model,
+    cnyPrice / rate,
+    showWithRecharge,
+    priceRate,
+    rate,
+    selectedGroup
+  )
+}
+
+export function formatVideoInputGroupPrice(
+  cnyPrice: number,
+  group: string,
+  showWithRecharge = false,
+  priceRate = 1,
+  usdExchangeRate = 1,
+  groupRatio: Record<string, number>
+): string {
+  const rate = usdExchangeRate > 0 ? usdExchangeRate : 1
+  return formatResolutionGroupPrice(
+    cnyPrice / rate,
+    group,
+    showWithRecharge,
+    priceRate,
+    rate,
+    groupRatio
   )
 }
 

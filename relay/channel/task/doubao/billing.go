@@ -185,8 +185,9 @@ func seedanceEstimateBilling(req relaycommon.TaskSubmitReq, originModel, upstrea
 	}
 
 	ratios := map[string]float64{}
+	// 基准价由管理端配置的无视频输入单价经 ModelRatio 直接表达，无需再缩放。
 	if videoRatio != 1.0 {
-		ratios["video_input"] = videoRatio
+		ratios[constant.TaskOtherRatioVideoInput] = videoRatio
 	}
 
 	aspect := metadataString(req.Metadata, "ratio")

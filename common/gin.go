@@ -20,6 +20,39 @@ import (
 const KeyRequestBody = "key_request_body"
 const KeyBodyStorage = "key_body_storage"
 
+// KeyOriginalRequestPath 保存客户端真实请求路径：协议适配中间件
+// （MiniMax / Kling / Jimeng 等）会把 URL 重写为内部路径（如 /v1/video/generations），
+// 日志记录时应优先展示重写前的原始路径。
+const KeyOriginalRequestPath = "key_original_request_path"
+
+// SaveOriginalRequestPath 在路径重写前记录客户端真实请求路径（只记录第一次）。
+func SaveOriginalRequestPath(c *gin.Context) {
+	if c == nil || c.Request == nil || c.Request.URL == nil {
+		return
+	}
+	if p := c.Request.URL.Path; p != "" {
+		if _, exists := c.Get(KeyOriginalRequestPath); !exists {
+			c.Set(KeyOriginalRequestPath, p)
+		}
+	}
+}
+
+// OriginalRequestPath 返回客户端真实请求路径：优先取重写前保存的原始路径，
+// 未保存时回退当前（可能已被重写的）路径。
+func OriginalRequestPath(c *gin.Context) string {
+	if c != nil {
+		if p, exists := c.Get(KeyOriginalRequestPath); exists {
+			if s, ok := p.(string); ok && s != "" {
+				return s
+			}
+		}
+		if c.Request != nil && c.Request.URL != nil {
+			return c.Request.URL.Path
+		}
+	}
+	return ""
+}
+
 var ErrRequestBodyTooLarge = errors.New("request body too large")
 
 func IsRequestBodyTooLargeError(err error) bool {

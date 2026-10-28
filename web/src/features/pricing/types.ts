@@ -1,21 +1,3 @@
-/*
-Copyright (C) 2023-2026 QuantumNous
-
-This program is free software: you can redistribute it and/or modify
-it under the terms of the GNU Affero General Public License as
-published by the Free Software Foundation, either version 3 of the
-License, or (at your option) any later version.
-
-This program is distributed in the hope that it will be useful,
-but WITHOUT ANY WARRANTY; without even the implied warranty of
-MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-GNU Affero General Public License for more details.
-
-You should have received a copy of the GNU Affero General Public License
-along with this program. If not, see <https://www.gnu.org/licenses/>.
-
-For commercial licensing, please contact support@quantumnous.com
-*/
 // ----------------------------------------------------------------------------
 // Pricing Types
 // ----------------------------------------------------------------------------
@@ -56,6 +38,18 @@ export type PricingModel = {
   billing_expr?: string
   /** USD unit prices keyed by resolution when billing_mode is resolution */
   resolution_price?: Record<string, number>
+  /** Billing unit for resolution_price: "second" | "million_tokens" */
+  resolution_unit?: string
+  /**
+   * CNY unit prices per 1M tokens keyed by video input:
+   * {no_video: 无视频输入, video: 有视频输入}。
+   */
+  video_input_price?: Record<string, number>
+  /**
+   * 逐分辨率「有视频输入单价」覆盖（元/百万 token），
+   * 仅按百万 token 分辨率计费的模型生效；未配置时无此字段。
+   */
+  video_input_resolutions?: Record<string, number>
   /** Pricing version returned by backend, useful for cache busting */
   pricing_version?: string
   /**

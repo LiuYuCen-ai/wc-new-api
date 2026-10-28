@@ -1,21 +1,3 @@
-/*
-Copyright (C) 2023-2026 QuantumNous
-
-This program is free software: you can redistribute it and/or modify
-it under the terms of the GNU Affero General Public License as
-published by the Free Software Foundation, either version 3 of the
-License, or (at your option) any later version.
-
-This program is distributed in the hope that it will be useful,
-but WITHOUT ANY WARRANTY; without even the implied warranty of
-MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-GNU Affero General Public License for more details.
-
-You should have received a copy of the GNU Affero General Public License
-along with this program. If not, see <https://www.gnu.org/licenses/>.
-
-For commercial licensing, please contact support@quantumnous.com
-*/
 import type { TFunction } from 'i18next'
 /*
 Copyright (C) 2023-2026 QuantumNous
@@ -59,7 +41,7 @@ import { IconBadge, type IconBadgeTone } from '@/components/ui/icon-badge'
 import { Label } from '@/components/ui/label'
 import { DynamicPricingBreakdown } from '@/features/pricing/components/dynamic-pricing-breakdown'
 import { useCopyToClipboard } from '@/hooks/use-copy-to-clipboard'
-import { formatBillingCurrencyFromUSD } from '@/lib/currency'
+import { formatPriceInDisplayCurrency } from '@/lib/currency'
 import { formatLogQuota, formatTokens, formatUseTime } from '@/lib/format'
 import { cn } from '@/lib/utils'
 
@@ -82,6 +64,15 @@ import {
   isPerCallBilling,
   isTimingLogType,
 } from '../../lib/utils'
+import { resolveVideoInputTier } from '../../lib/video-input-tier'
+import {
+  isResolutionBillingLog,
+  isResolutionTokenBilling,
+  resolveAppliedUnitPrice,
+  resolveBilledVideoTokens,
+  resolveResolutionVideoInputTier,
+  resolveResolutionTierPrices,
+} from '../../lib/resolution-billing'
 import { USAGE_BILLING_PATH, type LogOtherData } from '../../types'
 
 // Maps a channel-update changed-field token (as recorded by the backend audit)
@@ -230,7 +221,9 @@ function BillingBreakdown(props: {
 
   const rows: Array<{ label: string; value: string }> = []
   const priceOpts = { digitsLarge: 4, digitsSmall: 6, abbreviate: false }
-  const fmtPrice = (usd: number) => formatBillingCurrencyFromUSD(usd, priceOpts)
+  // 日志计费详情跟随系统显示币种（USD→$ / CNY→¥ / 自定义符号），不做美元换算。
+  const fmtPrice = (price: number) =>
+    formatPriceInDisplayCurrency(price, priceOpts)
   const baseInputUSD = other.model_ratio != null ? other.model_ratio * 2.0 : 0
 
   if (isTieredExpr) {
@@ -257,6 +250,61 @@ function BillingBreakdown(props: {
         value: t('No matching results'),
       })
     }
+  } else if (isResolutionBillingLog(other)) {
+    // 按分辨率计费：按秒（美元/秒）或按 token（美元/百万 token）。
+    // model_price 是分辨率单价而不是按次单价，不能走「每次调用」分支。
+    const isTokenBilling = isResolutionTokenBilling(other)
+    rows.push({
+      label: t('Billing Mode'),
+      value: isTokenBilling ? t('By token') : t('By second'),
+    })
+    if (other.resolution) {
+      rows.push({
+        label: t('Resolution'),
+        value: isTokenBilling
+          ? `${other.resolution} (${t('per 1M tokens')})`
+          : other.resolution,
+      })
+    }
+    const unitSuffix = isTokenBilling ? '/M' : '/s'
+    if (isTokenBilling) {
+      const { noVideo, video } = resolveResolutionTierPrices(other)
+      if (noVideo != null) {
+        rows.push({
+          label: t('No video input price'),
+          value: `${fmtPrice(noVideo)}${unitSuffix}`,
+        })
+      }
+      if (video != null) {
+        rows.push({
+          label: t('With video input price'),
+          value: `${fmtPrice(video)}${unitSuffix}`,
+        })
+      }
+    }
+    const applied = resolveAppliedUnitPrice(other)
+    if (applied != null) {
+      const tier = resolveResolutionVideoInputTier(other)
+      let tierLabel = ''
+      if (tier === 'video') {
+        tierLabel = t('With video')
+      } else if (tier === 'no_video') {
+        tierLabel = t('No video')
+      }
+      rows.push({
+        label: t('Applied price'),
+        value: `${fmtPrice(applied)}${unitSuffix}${tierLabel ? ` ${tierLabel}` : ''}`,
+      })
+    }
+    const videoTokens = resolveBilledVideoTokens(other)
+    if (videoTokens) {
+      rows.push({
+        label: videoTokens.estimated
+          ? t('Estimated video tokens')
+          : t('Video tokens'),
+        value: `${videoTokens.estimated ? '≈' : ''}${videoTokens.tokens.toLocaleString()}`,
+      })
+    }
   } else if (isPerCall) {
     rows.push({ label: t('Billing Mode'), value: t('Per-call') })
     if (other.model_price != null) {
@@ -265,9 +313,58 @@ function BillingBreakdown(props: {
         value: fmtPrice(other.model_price),
       })
     }
+    if (other.resolution) {
+      rows.push({
+        label: t('Resolution'),
+        value:
+          other.billing_unit === 'million_tokens'
+            ? `${other.resolution} (${t('per 1M tokens')})`
+            : other.resolution,
+      })
+    }
   } else {
     rows.push({ label: t('Billing Mode'), value: t('Per-token') })
-    if (other.model_ratio != null) {
+    const cnyPrices = other.video_input_price
+    const hasCnyPrices =
+      !!cnyPrices &&
+      ((cnyPrices.no_video ?? 0) > 0 || (cnyPrices.video ?? 0) > 0)
+    if (hasCnyPrices) {
+      // 管理端配置的视频输入单价原样展示（不做美元换算）：先列出两档配置单价，
+      // 再显示本次命中的档位单价，货币符号跟随系统显示币种（USD→$ / CNY→¥）。
+      if (other.resolution) {
+        rows.push({
+          label: t('Resolution'),
+          value: other.resolution,
+        })
+      }
+      if ((cnyPrices.no_video ?? 0) > 0 && cnyPrices.no_video != null) {
+        rows.push({
+          label: t('No video input price'),
+          value: `${fmtPrice(cnyPrices.no_video)}/M`,
+        })
+      }
+      if ((cnyPrices.video ?? 0) > 0 && cnyPrices.video != null) {
+        rows.push({
+          label: t('With video input price'),
+          value: `${fmtPrice(cnyPrices.video)}/M`,
+        })
+      }
+      const tier = resolveVideoInputTier(other)
+      const isVideoTier = tier === 'video'
+      const appliedPrice = isVideoTier
+        ? cnyPrices.video
+        : (cnyPrices.no_video ?? cnyPrices.video)
+      if ((appliedPrice ?? 0) > 0) {
+        let tierLabel = ''
+        if (tier) {
+          tierLabel = isVideoTier ? t('With video') : t('No video')
+        }
+        rows.push({
+          label: t('Input'),
+          value: `${formatPriceInDisplayCurrency(appliedPrice)}/M${tierLabel ? ` ${tierLabel}` : ''}`,
+        })
+      }
+    } else if (other.model_ratio != null) {
       rows.push({
         label: t('Input'),
         value: `${fmtPrice(baseInputUSD)}/M`,
@@ -279,6 +376,18 @@ function BillingBreakdown(props: {
         value: `${fmtPrice(baseInputUSD * other.completion_ratio)}/M`,
       })
     }
+  }
+
+  // 差额结算日志：列出预扣与实际应扣，说明本条日志为何是补扣 / 退还金额。
+  if (other.pre_consumed_quota != null && other.actual_quota != null) {
+    rows.push({
+      label: t('Pre-consumed'),
+      value: formatLogQuota(other.pre_consumed_quota),
+    })
+    rows.push({
+      label: t('Actual charge'),
+      value: formatLogQuota(other.actual_quota),
+    })
   }
 
   const userGR = other.user_group_ratio

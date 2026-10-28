@@ -13,6 +13,8 @@ import (
 
 func KlingRequestConvert() func(c *gin.Context) {
 	return func(c *gin.Context) {
+		// 记录客户端真实路径，日志展示用（路径随后会被重写为内部路径）。
+		common.SaveOriginalRequestPath(c)
 		var originalReq map[string]interface{}
 		if err := common.UnmarshalBodyReusable(c, &originalReq); err != nil {
 			c.Next()

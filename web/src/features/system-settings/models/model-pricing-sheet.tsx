@@ -1,23 +1,5 @@
-/*
-Copyright (C) 2023-2026 QuantumNous
-
-This program is free software: you can redistribute it and/or modify
-it under the terms of the GNU Affero General Public License as
-published by the Free Software Foundation, either version 3 of the
-License, or (at your option) any later version.
-
-This program is distributed in the hope that it will be useful,
-but WITHOUT ANY WARRANTY; without even the implied warranty of
-MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-GNU Affero General Public License for more details.
-
-You should have received a copy of the GNU Affero General Public License
-along with this program. If not, see <https://www.gnu.org/licenses/>.
-
-For commercial licensing, please contact support@quantumnous.com
-*/
 import { zodResolver } from '@hookform/resolvers/zod'
-import { AlertTriangle, Save } from 'lucide-react'
+import { AlertTriangle, RotateCcw, Save } from 'lucide-react'
 import {
   forwardRef,
   useCallback,
@@ -28,6 +10,7 @@ import {
 } from 'react'
 import { useForm } from 'react-hook-form'
 import { useTranslation } from 'react-i18next'
+import { toast } from 'sonner'
 
 import { sideDrawerContentClassName } from '@/components/drawer-layout'
 import { Alert, AlertDescription } from '@/components/ui/alert'
@@ -62,6 +45,7 @@ import {
 } from '@/components/ui/sheet'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { cn } from '@/lib/utils'
+import { useSystemConfigStore } from '@/stores/system-config-store'
 
 import {
   EMPTY_LANE_ENABLED,
@@ -79,15 +63,21 @@ import {
   type ModelRatioData,
   type PricingMode,
 } from './model-pricing-core'
-import { PriceInput, PriceLane } from './model-pricing-inputs'
+import { BasePriceInput, PriceLane } from './model-pricing-inputs'
 import { formatPricingNumber } from './pricing-format'
-import { ResolutionPricingEditor } from './resolution-pricing-editor'
 import {
+  DEFAULT_RESOLUTION_BILLING_UNIT,
   createResolutionRow,
+  getSeedanceOfficialPrices,
+  normalizeResolutionBillingUnit,
   resolutionPricesFromRows,
   rowsFromResolutionPrices,
+  rowsFromTokenResolutions,
+  tokenResolutionTiersFromRows,
+  type ResolutionBillingUnit,
   type ResolutionPriceRow,
 } from './resolution-pricing'
+import { ResolutionPricingEditor } from './resolution-pricing-editor'
 import { TieredPricingEditor } from './tiered-pricing-editor'
 
 export type { ModelRatioData } from './model-pricing-core'
@@ -152,7 +142,20 @@ export const ModelPricingEditorPanel = forwardRef<
   ref
 ) {
   const { t } = useTranslation()
+  const usdExchangeRate = useSystemConfigStore(
+    (s) => s.config.currency.usdExchangeRate
+  )
+  const quotaDisplayType = useSystemConfigStore(
+    (s) => s.config.currency.quotaDisplayType
+  )
+  // 单价输入框展示的就是系统币种（USD→$ / CNY→¥），填入多少即多少钱：
+  // 系统按美元显示时不做汇率折算，直接作为 USD 单价驱动 ModelRatio 推导。
+  const priceToUsdRate =
+    quotaDisplayType === 'USD' || quotaDisplayType === 'TOKENS'
+      ? 1
+      : usdExchangeRate
   const [pricingMode, setPricingMode] = useState<PricingMode>('per-token')
+  // 无视频价未配置时的回退基准价（编辑旧模型时由已保存的 ratio 反推）。
   const [promptPrice, setPromptPrice] = useState('')
   const [lanePrices, setLanePrices] = useState<Record<LaneKey, string>>({
     ...EMPTY_LANE_PRICES,
@@ -163,6 +166,25 @@ export const ModelPricingEditorPanel = forwardRef<
   const [billingExpr, setBillingExpr] = useState('')
   const [requestRuleExpr, setRequestRuleExpr] = useState('')
   const [resolutionRows, setResolutionRows] = useState<ResolutionPriceRow[]>([])
+  // 按 token 专用的逐分辨率两档表（无视频 / 有视频），与按秒表完全独立：
+  // 切换计费单位只切换显示与生效的表，不共享、不互相覆盖。
+  const [tokenResolutionRows, setTokenResolutionRows] = useState<
+    ResolutionPriceRow[]
+  >([])
+  const [resolutionUnit, setResolutionUnit] = useState<ResolutionBillingUnit>(
+    DEFAULT_RESOLUTION_BILLING_UNIT
+  )
+  const isTokenUnit = resolutionUnit === 'million_tokens'
+  // 当前单位对应的行数据 / setter（编辑器与校验统一走这两个）。
+  const activeResolutionRows = isTokenUnit
+    ? tokenResolutionRows
+    : resolutionRows
+  const setActiveResolutionRows = isTokenUnit
+    ? setTokenResolutionRows
+    : setResolutionRows
+  // 视频输入计费覆盖（¥/百万 token）：空 = 未配置，按模型原有计费；seedance 有官方刊例价兜底。
+  const [videoInputNoVideoPrice, setVideoInputNoVideoPrice] = useState('')
+  const [videoInputPrice, setVideoInputPrice] = useState('')
   const [editorReloadToken, setEditorReloadToken] = useState(0)
   const isEditMode = !!editData
 
@@ -196,6 +218,18 @@ export const ModelPricingEditorPanel = forwardRef<
         audioRatio: editData.audioRatio || '',
         audioCompletionRatio: editData.audioCompletionRatio || '',
       })
+      const savedVideoInput = editData.videoInputPrice
+      const hasVideoInputPrice = Boolean(
+        savedVideoInput &&
+          (savedVideoInput.no_video > 0 || savedVideoInput.video > 0)
+      )
+      // 按秒表（resolution_price）与按 token 两档表（video_input_price.resolutions）
+      // 分属两张独立配置，各自回填、互不覆盖。
+      const secondRows = rowsFromResolutionPrices(editData.resolutionPrices)
+      const tokenRows = rowsFromTokenResolutions(savedVideoInput?.resolutions)
+      const hasResolutionPrice = secondRows.some(
+        (row) => row.price.trim() !== ''
+      )
       let nextMode: PricingMode = 'per-token'
       if (editData.billingMode === 'tiered_expr') {
         nextMode = 'tiered_expr'
@@ -207,13 +241,28 @@ export const ModelPricingEditorPanel = forwardRef<
       setPricingMode(nextMode)
       setBillingExpr(editData.billingExpr || '')
       setRequestRuleExpr(editData.requestRuleExpr || '')
-      const nextResolutionRows = rowsFromResolutionPrices(
-        editData.resolutionPrices
-      )
+      const nextUnit =
+        hasVideoInputPrice && !hasResolutionPrice
+          ? 'million_tokens'
+          : normalizeResolutionBillingUnit(editData.resolutionUnit)
       setResolutionRows(
-        nextResolutionRows.length > 0
-          ? nextResolutionRows
-          : [createResolutionRow('720P', '')]
+        secondRows.length > 0 ? secondRows : [createResolutionRow('720P', '')]
+      )
+      setTokenResolutionRows(
+        tokenRows.length > 0
+          ? tokenRows
+          : [createResolutionRow('720P', '', '')]
+      )
+      setResolutionUnit(nextUnit)
+      setVideoInputNoVideoPrice(
+        savedVideoInput && savedVideoInput.no_video > 0
+          ? formatPricingNumber(savedVideoInput.no_video)
+          : ''
+      )
+      setVideoInputPrice(
+        savedVideoInput && savedVideoInput.video > 0
+          ? formatPricingNumber(savedVideoInput.video)
+          : ''
       )
     } else {
       form.reset({
@@ -231,6 +280,10 @@ export const ModelPricingEditorPanel = forwardRef<
       setBillingExpr('')
       setRequestRuleExpr('')
       setResolutionRows([createResolutionRow('720P', '')])
+      setTokenResolutionRows([createResolutionRow('720P', '', '')])
+      setResolutionUnit(DEFAULT_RESOLUTION_BILLING_UNIT)
+      setVideoInputNoVideoPrice('')
+      setVideoInputPrice('')
     }
 
     setPromptPrice(nextLaneState.promptPrice)
@@ -246,10 +299,77 @@ export const ModelPricingEditorPanel = forwardRef<
     })
   }
 
+  const watchedName = form.watch('name')
+  const officialVideoInputPrices = useMemo(
+    () => getSeedanceOfficialPrices(watchedName),
+    [watchedName]
+  )
+
+  // 无视频输入单价（¥/百万 token）直接充当基准输入价：按汇率换算成 USD 后驱动
+  // ModelRatio 与各附加通道倍率的推导；未配置时回退到已保存 ratio 反推的基准价。
+  const effectivePromptPrice = useMemo(() => {
+    const noVideo = toNumberOrNull(videoInputNoVideoPrice)
+    if (noVideo !== null && noVideo > 0 && priceToUsdRate > 0) {
+      return formatPricingNumber(noVideo / priceToUsdRate)
+    }
+    return promptPrice
+  }, [promptPrice, priceToUsdRate, videoInputNoVideoPrice])
+
+  // seedance 模型自动填入官方刊例价（已有配置时不覆盖，可手动修改；其它模型由管理员填写）。
+  // 填入无视频价时同步推导基准 ModelRatio（无视频价即基准输入价）。
+  useEffect(() => {
+    if (!officialVideoInputPrices) return
+    let filledNoVideo = false
+    setVideoInputNoVideoPrice((prev) => {
+      if (prev !== '') return prev
+      filledNoVideo = true
+      return formatPricingNumber(officialVideoInputPrices.no_video)
+    })
+    setVideoInputPrice((prev) =>
+      prev === '' ? formatPricingNumber(officialVideoInputPrices.video) : prev
+    )
+    if (
+      filledNoVideo &&
+      priceToUsdRate > 0 &&
+      officialVideoInputPrices.no_video > 0
+    ) {
+      setFormValue(
+        'ratio',
+        formatPricingNumber(
+          officialVideoInputPrices.no_video / priceToUsdRate / 2
+        )
+      )
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- setFormValue 为 form.setValue 的薄包装，form 稳定
+  }, [officialVideoInputPrices, priceToUsdRate])
+
+  const handleVideoInputReset = () => {
+    if (!officialVideoInputPrices) return
+    setVideoInputNoVideoPrice(
+      formatPricingNumber(officialVideoInputPrices.no_video)
+    )
+    setVideoInputPrice(formatPricingNumber(officialVideoInputPrices.video))
+    const nextPrompt =
+      priceToUsdRate > 0
+        ? formatPricingNumber(
+            officialVideoInputPrices.no_video / priceToUsdRate
+          )
+        : ''
+    if (nextPrompt) setPromptPrice(nextPrompt)
+    syncLaneRatios(nextPrompt, lanePrices, laneEnabled)
+  }
+
+  // 「按 Token」页签的输入价格（USD/百万 token）：改动后同步推导 ModelRatio 与各附加通道倍率。
+  const handlePromptPriceChange = (value: string) => {
+    if (!numericDraftRegex.test(value)) return
+    setPromptPrice(value)
+    syncLaneRatios(value, lanePrices, laneEnabled)
+  }
+
   const deriveLaneRatio = (
     lane: LaneKey,
     price: string,
-    nextPromptPrice = promptPrice,
+    nextPromptPrice = effectivePromptPrice,
     nextLanePrices = lanePrices
   ) => {
     const priceNumber = toNumberOrNull(price)
@@ -267,7 +387,7 @@ export const ModelPricingEditorPanel = forwardRef<
   }
 
   const syncLaneRatios = (
-    nextPromptPrice = promptPrice,
+    nextPromptPrice = effectivePromptPrice,
     nextLanePrices = lanePrices,
     nextLaneEnabled = laneEnabled
   ) => {
@@ -295,12 +415,6 @@ export const ModelPricingEditorPanel = forwardRef<
     })
   }
 
-  const handlePromptPriceChange = (value: string) => {
-    if (!numericDraftRegex.test(value)) return
-    setPromptPrice(value)
-    syncLaneRatios(value, lanePrices, laneEnabled)
-  }
-
   const handleLanePriceChange = (lane: LaneKey, value: string) => {
     if (!numericDraftRegex.test(value)) return
     const nextLanePrices = { ...lanePrices, [lane]: value }
@@ -309,7 +423,7 @@ export const ModelPricingEditorPanel = forwardRef<
     if (laneEnabled[lane]) {
       setFormValue(
         ratioFieldByLane[lane],
-        deriveLaneRatio(lane, value, promptPrice, nextLanePrices)
+        deriveLaneRatio(lane, value, effectivePromptPrice, nextLanePrices)
       )
     }
 
@@ -319,7 +433,7 @@ export const ModelPricingEditorPanel = forwardRef<
         deriveLaneRatio(
           'audioOutput',
           nextLanePrices.audioOutput,
-          promptPrice,
+          effectivePromptPrice,
           nextLanePrices
         )
       )
@@ -346,7 +460,12 @@ export const ModelPricingEditorPanel = forwardRef<
     if (checked) {
       setFormValue(
         ratioFieldByLane[lane],
-        deriveLaneRatio(lane, nextPrices[lane], promptPrice, nextPrices)
+        deriveLaneRatio(
+          lane,
+          nextPrices[lane],
+          effectivePromptPrice,
+          nextPrices
+        )
       )
     }
   }
@@ -357,37 +476,99 @@ export const ModelPricingEditorPanel = forwardRef<
     if (nextMode === 'tiered_expr' && !billingExpr) {
       setBillingExpr('tier("base", p * 0 + c * 0)')
     }
-    if (nextMode === 'resolution' && resolutionRows.length === 0) {
-      setResolutionRows([createResolutionRow('720P', '')])
+    if (nextMode === 'resolution' && activeResolutionRows.length === 0) {
+      setActiveResolutionRows([createResolutionRow('720P', '')])
     }
   }
 
   const watchedValues = form.watch()
-  const previewRows = useMemo(
-    () =>
-      buildPreviewRows(
-        watchedValues,
-        pricingMode,
-        billingExpr,
-        requestRuleExpr,
-        promptPrice,
-        lanePrices,
-        laneEnabled,
-        t,
-        resolutionPricesFromRows(resolutionRows) ?? undefined
-      ),
-    [
-      billingExpr,
-      laneEnabled,
-      lanePrices,
-      pricingMode,
-      promptPrice,
-      requestRuleExpr,
-      resolutionRows,
-      t,
-      watchedValues,
-    ]
+  // 分辨率单价的错误提示：整表为空时用「请先添加分辨率及单价」，其余情况提示格式/重复问题。
+  const resolutionPriceErrorMessage = useCallback(
+    (empty: boolean) => {
+      if (empty) {
+        return t('Add at least one resolution and its price before saving.')
+      }
+      return t(
+        'Add at least one resolution with a non-negative price. Duplicate labels are not allowed.'
+      )
+    },
+    [t]
   )
+  const videoInputPriceDraft = useMemo(() => {
+    const parse = (raw: string) => {
+      const value = raw.trim()
+      if (value === '') return null
+      const num = Number(value)
+      return Number.isFinite(num) ? num : Number.NaN
+    }
+    return {
+      noVideo: parse(videoInputNoVideoPrice),
+      video: parse(videoInputPrice),
+    }
+  }, [videoInputNoVideoPrice, videoInputPrice])
+  const previewRows = useMemo(() => {
+    // 预览按「当前单位」取对应的独立单价表：
+    // 按秒读 resolution_price，按 token 读 video_input_price.resolutions。
+    const tokenTiers = tokenResolutionTiersFromRows(tokenResolutionRows).tiers
+    let previewResolutionPrices: Record<string, number> | undefined
+    if (isTokenUnit) {
+      previewResolutionPrices = tokenTiers
+        ? Object.fromEntries(
+            Object.entries(tokenTiers).map(([res, tier]) => [
+              res,
+              tier.no_video,
+            ])
+          )
+        : undefined
+    } else {
+      previewResolutionPrices = resolutionPricesFromRows(resolutionRows) ?? undefined
+    }
+    const previewVideoInput =
+      videoInputPriceDraft.noVideo !== null ||
+      videoInputPriceDraft.video !== null ||
+      (tokenTiers && Object.keys(tokenTiers).length > 0)
+        ? {
+            no_video:
+              !Number.isNaN(videoInputPriceDraft.noVideo) &&
+              videoInputPriceDraft.noVideo !== null
+                ? videoInputPriceDraft.noVideo
+                : 0,
+            video:
+              !Number.isNaN(videoInputPriceDraft.video) &&
+              videoInputPriceDraft.video !== null
+                ? videoInputPriceDraft.video
+                : 0,
+            ...(tokenTiers ? { resolutions: tokenTiers } : {}),
+          }
+        : null
+    return buildPreviewRows(
+      watchedValues,
+      pricingMode,
+      billingExpr,
+      requestRuleExpr,
+      effectivePromptPrice,
+      lanePrices,
+      laneEnabled,
+      t,
+      previewResolutionPrices,
+      resolutionUnit,
+      previewVideoInput
+    )
+  }, [
+    billingExpr,
+    laneEnabled,
+    lanePrices,
+    pricingMode,
+    effectivePromptPrice,
+    requestRuleExpr,
+    resolutionRows,
+    tokenResolutionRows,
+    isTokenUnit,
+    resolutionUnit,
+    videoInputPriceDraft,
+    t,
+    watchedValues,
+  ])
 
   const warnings = useMemo(() => {
     const nextWarnings: string[] = []
@@ -413,7 +594,7 @@ export const ModelPricingEditorPanel = forwardRef<
 
     if (
       pricingMode === 'per-token' &&
-      toNumberOrNull(promptPrice) === null &&
+      toNumberOrNull(effectivePromptPrice) === null &&
       laneConfigs.some(
         ({ key }) => laneEnabled[key] && hasValue(lanePrices[key])
       )
@@ -431,32 +612,59 @@ export const ModelPricingEditorPanel = forwardRef<
       nextWarnings.push(t('Audio output price requires an audio input price.'))
     }
 
-    if (pricingMode === 'resolution') {
-      const prices = resolutionPricesFromRows(resolutionRows)
-      if (!prices) {
+    // 按分辨率计费必须填写当前单位的分辨率单价：为空/非法时不允许保存。
+    if (pricingMode === 'resolution' && !isTokenUnit) {
+      if (!resolutionPricesFromRows(resolutionRows)) {
         nextWarnings.push(
-          t(
-            'Add at least one resolution with a non-negative price. Duplicate labels are not allowed.'
+          resolutionPriceErrorMessage(
+            !resolutionRows.some((row) => row.price.trim() !== '')
           )
         )
       }
     }
 
-    return nextWarnings
-  }, [editData, laneEnabled, lanePrices, pricingMode, promptPrice, resolutionRows, t])
+    if (pricingMode === 'resolution' && isTokenUnit) {
+      const { configured, tiers } =
+        tokenResolutionTiersFromRows(tokenResolutionRows)
+      if (!configured || !tiers) {
+        nextWarnings.push(resolutionPriceErrorMessage(!configured))
+      }
+    }
 
-  const validatePricingValues = useCallback(() => {
+    if (
+      Number.isNaN(videoInputPriceDraft.noVideo) ||
+      Number.isNaN(videoInputPriceDraft.video)
+    ) {
+      nextWarnings.push(t('Video input prices must be non-negative numbers.'))
+    }
+
+    return nextWarnings
+  }, [
+    editData,
+    laneEnabled,
+    lanePrices,
+    pricingMode,
+    effectivePromptPrice,
+    resolutionRows,
+    tokenResolutionRows,
+    isTokenUnit,
+    videoInputPriceDraft,
+    resolutionPriceErrorMessage,
+    t,
+  ])
+
+  // 返回第一条校验错误信息（用于 toast 提示 + 表单内联报错），通过时返回 null。
+  const validatePricingValues = useCallback((): string | null => {
     if (
       pricingMode === 'per-token' &&
-      toNumberOrNull(promptPrice) === null &&
+      toNumberOrNull(effectivePromptPrice) === null &&
       laneConfigs.some(
         ({ key }) => laneEnabled[key] && hasValue(lanePrices[key])
       )
     ) {
-      form.setError('ratio', {
-        message: t('Input price is required before saving dependent prices.'),
-      })
-      return false
+      const message = t('Input price is required before saving dependent prices.')
+      form.setError('ratio', { message })
+      return message
     }
 
     if (
@@ -464,26 +672,66 @@ export const ModelPricingEditorPanel = forwardRef<
       laneEnabled.audioOutput &&
       !hasValue(lanePrices.audioInput)
     ) {
-      form.setError('audioRatio', {
-        message: t('Audio output price requires an audio input price.'),
-      })
-      return false
+      const message = t('Audio output price requires an audio input price.')
+      form.setError('audioRatio', { message })
+      return message
     }
 
-    if (pricingMode === 'resolution' && !resolutionPricesFromRows(resolutionRows)) {
-      form.setError('price', {
-        message: t(
-          'Add at least one resolution with a non-negative price. Duplicate labels are not allowed.'
-        ),
-      })
-      return false
+    if (pricingMode === 'resolution' && !isTokenUnit) {
+      if (!resolutionPricesFromRows(resolutionRows)) {
+        const message = resolutionPriceErrorMessage(
+          !resolutionRows.some((row) => row.price.trim() !== '')
+        )
+        form.setError('price', { message })
+        return message
+      }
     }
 
-    return true
-  }, [form, laneEnabled, lanePrices, pricingMode, promptPrice, resolutionRows, t])
+    if (pricingMode === 'resolution' && isTokenUnit) {
+      const { configured, tiers } =
+        tokenResolutionTiersFromRows(tokenResolutionRows)
+      if (!configured || !tiers) {
+        const message = resolutionPriceErrorMessage(!configured)
+        form.setError('price', { message })
+        return message
+      }
+    }
+
+    if (
+      Number.isNaN(videoInputPriceDraft.noVideo) ||
+      Number.isNaN(videoInputPriceDraft.video)
+    ) {
+      const message = t('Video input prices must be non-negative numbers.')
+      form.setError('price', { message })
+      return message
+    }
+
+    return null
+  }, [
+    form,
+    laneEnabled,
+    lanePrices,
+    pricingMode,
+    effectivePromptPrice,
+    resolutionRows,
+    tokenResolutionRows,
+    isTokenUnit,
+    videoInputPriceDraft,
+    resolutionPriceErrorMessage,
+    t,
+  ])
 
   const buildSubmitData = useCallback(
     (values: ModelPricingFormValues) => {
+      // 保存时只落「当前单位」的价格，另一套价格在写入端被清空（校验已保证当前表非空）：
+      //   - 按秒：resolution_price（USD/秒，单价 × 秒数），清空按 token 的逐分辨率表；
+      //   - 按 token：video_input_price.resolutions（元/百万 token 的 {no_video, video}），
+      //     清空按秒的 resolution_price。
+      // 计费模式不再回退：没有有效单价时保存会被校验拦截。
+      const secondPrices = resolutionPricesFromRows(resolutionRows)
+      const { tiers: tokenTiers } = tokenResolutionTiersFromRows(
+        tokenResolutionRows
+      )
       const data: ModelRatioData = {
         name: values.name.trim(),
         billingMode: pricingMode,
@@ -503,13 +751,40 @@ export const ModelPricingEditorPanel = forwardRef<
       }
 
       if (pricingMode === 'resolution') {
-        const prices = resolutionPricesFromRows(resolutionRows)
-        if (prices) data.resolutionPrices = prices
+        data.resolutionUnit = resolutionUnit
+        // 只保存当前单位对应的表；另一张表不写入，写入端据此清空旧值。
+        if (!isTokenUnit && secondPrices) {
+          data.resolutionPrices = secondPrices
+        }
+      }
+
+      const { noVideo, video } = videoInputPriceDraft
+      // 全局两档单价（无视频 / 有视频）在两种单位下都有效；
+      // 逐分辨率两档表仅属于按 token，按秒保存时不写入以清空旧值。
+      if (
+        noVideo !== null ||
+        video !== null ||
+        (isTokenUnit && tokenTiers)
+      ) {
+        data.videoInputPrice = {
+          no_video: noVideo !== null && !Number.isNaN(noVideo) ? noVideo : 0,
+          video: video !== null && !Number.isNaN(video) ? video : 0,
+          ...(isTokenUnit && tokenTiers ? { resolutions: tokenTiers } : {}),
+        }
       }
 
       return data
     },
-    [billingExpr, pricingMode, requestRuleExpr, resolutionRows]
+    [
+      billingExpr,
+      pricingMode,
+      requestRuleExpr,
+      resolutionRows,
+      tokenResolutionRows,
+      isTokenUnit,
+      resolutionUnit,
+      videoInputPriceDraft,
+    ]
   )
 
   useImperativeHandle(
@@ -517,14 +792,53 @@ export const ModelPricingEditorPanel = forwardRef<
     () => ({
       commitDraft: async () => {
         const isValid = await form.trigger()
-        if (!isValid || !validatePricingValues()) return null
+        if (!isValid) {
+          toast.error(t('Please fix the highlighted fields before saving'))
+          return null
+        }
+        // 价格为空的校验：除了在表单内联报错，还要弹出提示，避免用户点了保存却没有任何反馈。
+        const validationError = validatePricingValues()
+        if (validationError) {
+          toast.error(validationError)
+          return null
+        }
         return buildSubmitData(form.getValues())
       },
     }),
-    [form, validatePricingValues, buildSubmitData]
+    [form, validatePricingValues, buildSubmitData, t]
   )
 
   const showActions = Boolean(onSave)
+
+  // 视频输入计费区块：按 token 模式下按分辨率配置两档单价（无视频 / 有视频）。
+  // 全局两档单价输入框已移除，仅作为已有配置的回退倍率保留在数据模型中。
+  const videoInputHeaderSection = (
+    <div className='flex flex-wrap items-start justify-between gap-2'>
+      <div className='min-w-0 flex-1'>
+        <FieldLabel>{t('Video input pricing')}</FieldLabel>
+        <FieldDescription>
+          {t(
+            'Each resolution below has its own no-video / with-video price per 1M tokens. A with-video price left empty falls back to the ratio of the globally configured video input prices.'
+          )}
+          {officialVideoInputPrices
+            ? ` ${t('Seedance models pre-fill official list prices.')}`
+            : null}
+        </FieldDescription>
+      </div>
+      {officialVideoInputPrices && (
+        <Button
+          type='button'
+          variant='outline'
+          size='sm'
+          onClick={handleVideoInputReset}
+        >
+          <RotateCcw data-icon='inline-start' />
+          {t('Reset to official price')}
+        </Button>
+      )}
+    </div>
+  )
+
 
   return (
     <div
@@ -610,17 +924,13 @@ export const ModelPricingEditorPanel = forwardRef<
 
                   <TabsContent value='per-token' className='pt-0'>
                     <FieldGroup className='gap-5'>
-                      <Field>
-                        <FieldLabel>{t('Input price')}</FieldLabel>
-                        <PriceInput
-                          value={promptPrice}
-                          placeholder='3'
-                          onChange={handlePromptPriceChange}
-                        />
-                        <FieldDescription>
-                          {t('USD price per 1M input tokens.')}
-                        </FieldDescription>
-                      </Field>
+                      <BasePriceInput
+                        title={t('Input price')}
+                        description={t('USD price per 1M input tokens.')}
+                        value={promptPrice}
+                        placeholder='3'
+                        onChange={handlePromptPriceChange}
+                      />
 
                       <div className='grid gap-3 sm:grid-cols-[repeat(auto-fit,minmax(400px,1fr))]'>
                         {laneConfigs.map((lane) => {
@@ -692,10 +1002,16 @@ export const ModelPricingEditorPanel = forwardRef<
                   </TabsContent>
 
                   <TabsContent value='resolution' className='pt-0'>
-                    <ResolutionPricingEditor
-                      rows={resolutionRows}
-                      onChange={setResolutionRows}
-                    />
+                    <FieldGroup className='gap-5'>
+                      <ResolutionPricingEditor
+                        modelName={watchedValues.name}
+                        rows={activeResolutionRows}
+                        onChange={setActiveResolutionRows}
+                        unit={resolutionUnit}
+                        onUnitChange={setResolutionUnit}
+                        videoInputHeader={videoInputHeaderSection}
+                      />
+                    </FieldGroup>
                   </TabsContent>
 
                   <TabsContent value='tiered_expr' className='pt-0'>

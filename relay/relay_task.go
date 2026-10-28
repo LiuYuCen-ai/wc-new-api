@@ -19,6 +19,8 @@ import (
 	relayconstant "github.com/QuantumNous/new-api/relay/constant"
 	"github.com/QuantumNous/new-api/relay/helper"
 	"github.com/QuantumNous/new-api/service"
+	"github.com/QuantumNous/new-api/setting/billing_setting"
+	"github.com/QuantumNous/new-api/utils"
 	"github.com/gin-gonic/gin"
 )
 
@@ -188,7 +190,38 @@ func RelayTaskSubmit(c *gin.Context, info *relaycommon.RelayInfo) (*TaskSubmitRe
 	// 5. 计费估算：让适配器根据用户请求提供 OtherRatios（时长、分辨率等）
 	//    必须在 ModelPriceHelperPerCall 之后调用（它会重建 PriceData）。
 	//    ResolveOriginTask 可能已在 remix 路径中预设了 OtherRatios，此处合并。
-	if estimatedRatios := adaptor.EstimateBilling(c, info); len(estimatedRatios) > 0 {
+	//    resolution 模式下统一由 utils.ResolutionBillingRatios 归一化，
+	//    保证「按秒 / 按百万 token」对全部视频模型生效（即使适配器未实现估算）。
+	//    例外：seedance 等自带 token 预估（precharge）的适配器保留原有计费逻辑，
+	//    不套用前端配置的「按百万 token」分辨率单价。
+	estimatedRatios := adaptor.EstimateBilling(c, info)
+	if billing_setting.GetBillingMode(info.OriginModelName) == billing_setting.BillingModeResolution {
+		if utils.AdaptorOwnsTokenBilling(estimatedRatios) {
+			info.PriceData.BillingUnit = ""
+		} else {
+			estimatedRatios = utils.ResolutionBillingRatios(c, info.OriginModelName, estimatedRatios)
+		}
+	}
+	// 5.5 视频输入计费：管理端为模型配置了「无视频输入 / 有视频输入」单价时，
+	//     通用检测请求参数是否带视频并应用对应单价（seedance 等自带 token
+	//     计费的适配器已在 EstimateBilling 内应用，此处跳过）。
+	estimatedRatios = utils.ApplyVideoInputPricing(c, info.OriginModelName, estimatedRatios)
+	// 5.6 预扣估算：按 token 计费（未配置按次价格）的视频任务，提交时按上游官方
+	//     token 公式（时长 × 输出像素 × 24fps / 1024）估算整段视频的用量并预扣。
+	//     此前固定按「半倍率」预扣（与时长、分辨率无关），长视频 / 高分辨率会
+	//     明显预扣不足；任务完成后按上游真实 token 多退少补。
+	if !info.PriceData.UsePrice &&
+		billing_setting.GetBillingMode(info.OriginModelName) != billing_setting.BillingModeTieredExpr &&
+		utils.IsVideoTaskAction(info.Action) &&
+		!utils.AdaptorOwnsTokenBilling(estimatedRatios) {
+		if precharge := utils.TaskPrechargeRatio(c, info.OriginModelName); precharge > 0 {
+			if estimatedRatios == nil {
+				estimatedRatios = make(map[string]float64, 1)
+			}
+			estimatedRatios[constant.TaskOtherRatioPrecharge] = precharge
+		}
+	}
+	if len(estimatedRatios) > 0 {
 		for k, v := range estimatedRatios {
 			info.PriceData.AddOtherRatio(k, v)
 		}
@@ -413,6 +446,15 @@ func videoFetchByIDRespBodyBuilder(c *gin.Context) (respBody []byte, taskResp *d
 		return
 	}
 
+	// MiniMax 官方 V2 接口：按官方约定返回 {"task": {...}}，不带 code/data 包装
+	if c.GetString(constant.TaskResponseFormatKey) == constant.TaskResponseFormatMiniMaxV2 {
+		respBody, err = miniMaxV2FetchRespBody(originTask)
+		if err != nil {
+			taskResp = service.TaskErrorWrapper(err, "marshal_response_failed", http.StatusInternalServerError)
+		}
+		return
+	}
+
 	// 通用 TaskDto 格式
 	respBody, err = common.Marshal(dto.TaskResponse[any]{
 		Code: "success",
@@ -422,6 +464,100 @@ func videoFetchByIDRespBodyBuilder(c *gin.Context) (respBody []byte, taskResp *d
 		taskResp = service.TaskErrorWrapper(err, "marshal_response_failed", http.StatusInternalServerError)
 	}
 	return
+}
+
+// miniMaxV2FetchRespBody renders the official MiniMax video V2 query payload:
+//
+//	{"task": {"id": "...", "model": "...", "status": "running", ...}}
+//
+// The upstream snapshot kept in task.Data is reused verbatim so optional
+// fields (resolution, ratio, duration, task_type, content, usage) survive.
+// Fields owned by the gateway (identity and current status) are always
+// refreshed from the database so a stale snapshot cannot report a wrong state.
+func miniMaxV2FetchRespBody(task *model.Task) ([]byte, error) {
+	var payload map[string]any
+	if len(task.Data) > 0 {
+		var wrapper struct {
+			Task map[string]any `json:"task"`
+		}
+		if err := common.Unmarshal(task.Data, &wrapper); err == nil && len(wrapper.Task) > 0 {
+			payload = wrapper.Task
+		}
+	}
+	if payload == nil {
+		payload = map[string]any{}
+	}
+
+	modelName := task.Properties.OriginModelName
+	if modelName == "" {
+		modelName = task.Properties.UpstreamModelName
+	}
+	if modelName != "" {
+		payload["model"] = modelName
+	}
+	// 官方 id 是上游任务号；task.TaskID 是网关自身的对外 id。
+	officialID := task.GetUpstreamTaskID()
+	if officialID == "" {
+		officialID = task.TaskID
+	}
+	if officialID != "" {
+		payload["id"] = officialID
+	}
+
+	status := miniMaxV2Status(task.Status)
+	// 上游已明确给出 cancelled 时保留，避免被内部 FAILURE 覆盖。
+	if rawStatus, _ := payload["status"].(string); rawStatus == "cancelled" && status == "failed" {
+		status = rawStatus
+	}
+	payload["status"] = status
+
+	if task.CreatedAt > 0 {
+		payload["created_at"] = task.CreatedAt
+	}
+	if task.UpdatedAt > 0 {
+		payload["updated_at"] = task.UpdatedAt
+	}
+	if _, ok := payload["usage"]; !ok {
+		payload["usage"] = map[string]any{}
+	}
+
+	if resultURL := task.GetResultURL(); resultURL != "" {
+		content, _ := payload["content"].(map[string]any)
+		if content == nil {
+			content = map[string]any{}
+		}
+		if existing, _ := content["url"].(string); existing == "" {
+			content["url"] = resultURL
+		}
+		payload["content"] = content
+	}
+
+	if task.Status == model.TaskStatusFailure && task.FailReason != "" {
+		errorInfo, _ := payload["error"].(map[string]any)
+		if errorInfo == nil {
+			errorInfo = map[string]any{"code": "task_failed"}
+		}
+		if msg, _ := errorInfo["message"].(string); msg == "" {
+			errorInfo["message"] = task.FailReason
+		}
+		payload["error"] = errorInfo
+	}
+
+	return common.Marshal(map[string]any{"task": payload})
+}
+
+func miniMaxV2Status(status model.TaskStatus) string {
+	switch status {
+	case model.TaskStatusSuccess:
+		return "succeeded"
+	case model.TaskStatusFailure:
+		return "failed"
+	case model.TaskStatusInProgress:
+		return "running"
+	case model.TaskStatusQueued, model.TaskStatusSubmitted, model.TaskStatusNotStart:
+		return "queued"
+	}
+	return "queued"
 }
 
 // tryRealtimeFetch 尝试从上游实时拉取 Gemini/Vertex 任务状态。

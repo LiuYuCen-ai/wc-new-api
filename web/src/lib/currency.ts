@@ -486,6 +486,65 @@ export function formatBillingCurrencyFromUSD(
 }
 
 /**
+ * Format a price that is already denominated in the system display currency.
+ *
+ * Unlike formatBillingCurrencyFromUSD, NO exchange-rate conversion is applied:
+ * the value is displayed as-is with the system currency symbol
+ * (USD → "$2", CNY → "¥2", CUSTOM → custom symbol, TOKENS → falls back to "$").
+ *
+ * @example
+ * // With quotaDisplayType: 'USD' → "$2"
+ * // With quotaDisplayType: 'CNY' → "¥2"
+ * formatPriceInDisplayCurrency(2)
+ */
+export function formatPriceInDisplayCurrency(
+  value: number | null | undefined,
+  options?: CurrencyFormatOptions
+): string {
+  if (value == null || Number.isNaN(value)) return '-'
+
+  const { config } = getCurrencyDisplay()
+  const meta = getBillingDisplayMeta(config)
+  const merged = mergeOptions(options)
+  const displayMeta: DisplayMeta =
+    meta.kind === 'tokens'
+      ? { kind: 'currency', symbol: '$', currencyCode: 'USD', exchangeRate: 1 }
+      : { ...meta, exchangeRate: 1 }
+  return formatCurrencyValue(value, merged, displayMeta)
+}
+
+/**
+ * Get the currency symbol used for billing displays.
+ *
+ * Follows the system display currency: USD → "$", CNY → "¥",
+ * CUSTOM → the configured custom symbol. Token display mode falls back to "$".
+ */
+export function getBillingCurrencySymbol(): string {
+  const { config } = getCurrencyDisplay()
+  const meta = getBillingDisplayMeta(config)
+  return meta.kind === 'tokens' ? '$' : meta.symbol
+}
+
+/**
+ * Format a raw log quota value with the system currency symbol, WITHOUT
+ * exchange-rate conversion (usage-logs display follows the system currency
+ * and shows the amount as stored).
+ *
+ * quota/tokenUnits → USD amount → displayed as-is with the system symbol
+ * (USD → "$0.5", CNY → "¥0.5", CUSTOM → custom symbol).
+ */
+export function formatLogQuotaInDisplayCurrency(
+  quota: number | null | undefined,
+  options?: CurrencyFormatOptions
+): string {
+  if (quota == null || Number.isNaN(quota)) return '-'
+
+  const { config } = getCurrencyDisplay()
+  const amountUSD = quota / config.quotaPerUnit
+  return formatPriceInDisplayCurrency(amountUSD, options)
+}
+
+/**
  * Format raw quota values (token units) to display currency.
  *
  * Converts raw quota/token amounts to USD first, then formats according

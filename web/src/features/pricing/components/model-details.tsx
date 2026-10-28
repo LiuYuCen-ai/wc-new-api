@@ -1,21 +1,3 @@
-/*
-Copyright (C) 2023-2026 QuantumNous
-
-This program is free software: you can redistribute it and/or modify
-it under the terms of the GNU Affero General Public License as
-published by the Free Software Foundation, either version 3 of the
-License, or (at your option) any later version.
-
-This program is distributed in the hope that it will be useful,
-but WITHOUT ANY WARRANTY; without even the implied warranty of
-MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-GNU Affero General Public License for more details.
-
-You should have received a copy of the GNU Affero General Public License
-along with this program. If not, see <https://www.gnu.org/licenses/>.
-
-For commercial licensing, please contact support@quantumnous.com
-*/
 import { useQuery } from '@tanstack/react-query'
 import { useNavigate, useParams, useSearch } from '@tanstack/react-router'
 import {
@@ -72,8 +54,12 @@ import {
   formatFixedPrice,
   formatGroupPrice,
   formatResolutionGroupPrice,
+  formatVideoInputGroupPrice,
   getResolutionPriceEntries,
+  getResolutionVideoPrice,
+  getVideoInputPriceEntries,
   isResolutionPricingModel,
+  isVideoInputPricingModel,
 } from '../lib/price'
 import type {
   ModelCapability,
@@ -709,21 +695,126 @@ function PriceSection(props: {
   }
 
   const resolutionEntries = getResolutionPriceEntries(props.model)
+  const videoInputEntries = getVideoInputPriceEntries(props.model)
+  const isTokenUnitResolution =
+    props.model.resolution_unit === 'million_tokens'
   if (isResolutionPricingModel(props.model)) {
+    const videoTier = videoInputEntries.find((entry) => entry.key === 'video')
+    const noVideoTier = videoInputEntries.find(
+      (entry) => entry.key === 'no_video'
+    )
+    // 有视频输入档：优先取逐分辨率「有视频输入单价」覆盖（与计费口径一致），
+    // 未配置时 = 分辨率单价 ×（有视频单价 / 无视频单价）。
+    const withVideoScale =
+      videoTier && noVideoTier && noVideoTier.price > 0
+        ? videoTier.price / noVideoTier.price
+        : 0
+    const withVideoPrice = (entry: { resolution: string; price: number }) => {
+      const override = getResolutionVideoPrice(props.model, entry.resolution)
+      if (override !== undefined && override > 0) return override
+      return withVideoScale > 0 ? entry.price * withVideoScale : 0
+    }
     return (
       <section>
         <SectionTitle>{t('Base Price')}</SectionTitle>
         <div className='grid grid-cols-2 gap-2'>
-          {resolutionEntries.map((entry) => (
+          {resolutionEntries.map((entry) =>
+            isTokenUnitResolution ? (
+              <div
+                key={entry.resolution}
+                className='bg-muted/20 rounded-lg border p-3'
+              >
+                <div className='text-muted-foreground text-xs'>
+                  {entry.resolution}
+                </div>
+                <div className='mt-1 space-y-1'>
+                  <div className='flex items-baseline justify-between gap-2'>
+                    <span className='text-muted-foreground/70 text-xs'>
+                      {t('Without video input')}
+                    </span>
+                    <span className='text-foreground font-mono text-sm font-semibold tabular-nums'>
+                      {formatResolutionGroupPrice(
+                        entry.price,
+                        baseGroupKey,
+                        props.showRechargePrice,
+                        props.priceRate,
+                        props.usdExchangeRate,
+                        baseGroupRatioMap
+                      )}
+                      <span className='text-muted-foreground/40 ml-1 text-xs font-normal'>
+                        / 1M tokens
+                      </span>
+                    </span>
+                  </div>
+                  {(() => {
+                    const videoPrice = withVideoPrice(entry)
+                    return videoPrice > 0 ? (
+                      <div className='flex items-baseline justify-between gap-2'>
+                        <span className='text-muted-foreground/70 text-xs'>
+                          {t('With video input')}
+                        </span>
+                        <span className='text-foreground font-mono text-sm font-semibold tabular-nums'>
+                          {formatResolutionGroupPrice(
+                            videoPrice,
+                            baseGroupKey,
+                            props.showRechargePrice,
+                            props.priceRate,
+                            props.usdExchangeRate,
+                            baseGroupRatioMap
+                          )}
+                          <span className='text-muted-foreground/40 ml-1 text-xs font-normal'>
+                            / 1M tokens
+                          </span>
+                        </span>
+                      </div>
+                    ) : null
+                  })()}
+                </div>
+              </div>
+            ) : (
+              <div
+                key={entry.resolution}
+                className='bg-muted/20 rounded-lg border p-3'
+              >
+                <div className='text-muted-foreground text-xs'>
+                  {entry.resolution}
+                </div>
+                <div className='text-foreground mt-1 font-mono text-base font-semibold tabular-nums'>
+                  {formatResolutionGroupPrice(
+                    entry.price,
+                    baseGroupKey,
+                    props.showRechargePrice,
+                    props.priceRate,
+                    props.usdExchangeRate,
+                    baseGroupRatioMap
+                  )}
+                  <span className='text-muted-foreground/40 ml-1 text-xs font-normal'>
+                    / {t('request')}
+                  </span>
+                </div>
+              </div>
+            )
+          )}
+        </div>
+      </section>
+    )
+  }
+
+  if (isVideoInputPricingModel(props.model)) {
+    return (
+      <section>
+        <SectionTitle>{t('Base Price')}</SectionTitle>
+        <div className='grid grid-cols-2 gap-2'>
+          {videoInputEntries.map((entry) => (
             <div
-              key={entry.resolution}
+              key={entry.key}
               className='bg-muted/20 rounded-lg border p-3'
             >
               <div className='text-muted-foreground text-xs'>
-                {entry.resolution}
+                {t(entry.labelKey)}
               </div>
               <div className='text-foreground mt-1 font-mono text-base font-semibold tabular-nums'>
-                {formatResolutionGroupPrice(
+                {formatVideoInputGroupPrice(
                   entry.price,
                   baseGroupKey,
                   props.showRechargePrice,
@@ -732,7 +823,7 @@ function PriceSection(props: {
                   baseGroupRatioMap
                 )}
                 <span className='text-muted-foreground/40 ml-1 text-xs font-normal'>
-                  / {t('request')}
+                  / 1M tokens
                 </span>
               </div>
             </div>
@@ -1084,6 +1175,9 @@ function GroupPricingSection(props: {
   const resolutionEntries = getResolutionPriceEntries(props.model)
   const isResolutionPriced = isResolutionPricingModel(props.model)
 
+  const videoInputEntries = getVideoInputPriceEntries(props.model)
+  const isVideoInputPriced = isVideoInputPricingModel(props.model)
+
   let priceColumns: {
     id: string
     header: string
@@ -1091,7 +1185,23 @@ function GroupPricingSection(props: {
     cellClassName: string
     cell: (group: string) => React.ReactNode
   }[]
-  if (isResolutionPriced) {
+  if (isVideoInputPriced) {
+    priceColumns = videoInputEntries.map((entry) => ({
+      id: `video-input-${entry.key}`,
+      header: t(entry.labelKey),
+      className: `${thClass} text-right`,
+      cellClassName: 'py-2.5 text-right font-mono',
+      cell: (group: string) =>
+        formatVideoInputGroupPrice(
+          entry.price,
+          group,
+          showRechargePrice,
+          props.priceRate,
+          props.usdExchangeRate,
+          props.groupRatio
+        ),
+    }))
+  } else if (isResolutionPriced) {
     priceColumns = resolutionEntries.map((entry) => ({
       id: `resolution-${entry.resolution}`,
       header: entry.resolution,
@@ -1144,8 +1254,13 @@ function GroupPricingSection(props: {
   }
 
   let priceFootnote: string | null = null
-  if (isResolutionPriced) {
-    priceFootnote = `${t('Prices shown per')} ${t('request')}`
+  if (isVideoInputPriced) {
+    priceFootnote = t('Prices shown per 1M tokens')
+  } else if (isResolutionPriced) {
+    priceFootnote =
+      props.model.resolution_unit === 'million_tokens'
+        ? t('Prices shown per 1M tokens')
+        : t('Prices shown per second')
   } else if (isTokenBased) {
     priceFootnote = `${t('Prices shown per')} ${tokenUnitLabel} tokens`
   }

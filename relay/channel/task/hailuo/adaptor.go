@@ -51,9 +51,17 @@ func (a *TaskAdaptor) resolveBaseURL(info *relaycommon.RelayInfo) string {
 
 func resolveMiniMaxVideoBaseURL(baseURL, model string) string {
 	base := strings.TrimSpace(baseURL)
-	// MiniMax-H3 V2 docs: https://api.minimax.io — legacy MiniMax chat default is api.minimax.chat.
-	if IsVideoGenerationV2(model) && (base == "" || base == "https://api.minimax.chat" || base == "https://api.minimaxi.com") {
-		return "https://api.minimax.io"
+	// An explicitly configured host always wins. The domestic site
+	// (api.minimaxi.com) and the international site (api.minimax.io) issue
+	// mutually incompatible keys, so rewriting the operator's choice makes
+	// valid keys fail with 401/2049.
+	if base != "" && base != "https://api.minimax.chat" {
+		return base
+	}
+	// Only the legacy default (or no host at all) is upgraded: V2 video
+	// generation is not served by api.minimax.chat.
+	if IsVideoGenerationV2(model) {
+		return "https://api.minimaxi.com"
 	}
 	if base != "" {
 		return base
@@ -67,7 +75,13 @@ func (a *TaskAdaptor) ValidateRequestAndSetAction(c *gin.Context, info *relaycom
 	if err := injectPromptFromMiniMaxContent(c); err != nil {
 		return service.TaskErrorWrapperLocal(err, "invalid_request", http.StatusBadRequest)
 	}
-	return relaycommon.ValidateBasicTaskRequest(c, info, constant.TaskActionGenerate, relaycommon.WithoutRequiredPrompt())
+	// 按请求是否带图片区分文生视频/图生视频：无图片为文生视频（此前固定为图生视频）。
+	action := constant.TaskActionTextGenerate
+	var req relaycommon.TaskSubmitReq
+	if err := common.UnmarshalBodyReusable(c, &req); err == nil && req.HasImage() {
+		action = constant.TaskActionGenerate
+	}
+	return relaycommon.ValidateBasicTaskRequest(c, info, action, relaycommon.WithoutRequiredPrompt())
 }
 
 // injectPromptFromMiniMaxContent copies content[].text into top-level prompt when
@@ -744,6 +758,15 @@ func (a *TaskAdaptor) parseV2TaskResult(respBody []byte) (*relaycommon.TaskInfo,
 		taskResult.Progress = taskcommon.ProgressComplete
 		if res.Task.Content != nil {
 			taskResult.Url = res.Task.Content.URL
+		}
+		// usage 里携带真实 token 用量，用于按百万 token 多退少补
+		if usage := res.Task.Usage; usage != nil {
+			taskResult.CompletionTokens = usage.CompletionTokens
+			taskResult.TotalTokens = usage.TotalTokens
+			if taskResult.TotalTokens <= 0 {
+				taskResult.TotalTokens = usage.CompletionTokens
+			}
+			taskResult.TokensFromUsage = taskResult.TotalTokens > 0
 		}
 	case TaskStatusV2Failed, TaskStatusV2Cancelled:
 		taskResult.Status = model.TaskStatusFailure

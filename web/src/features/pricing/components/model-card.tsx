@@ -1,21 +1,3 @@
-/*
-Copyright (C) 2023-2026 QuantumNous
-
-This program is free software: you can redistribute it and/or modify
-it under the terms of the GNU Affero General Public License as
-published by the Free Software Foundation, either version 3 of the
-License, or (at your option) any later version.
-
-This program is distributed in the hope that it will be useful,
-but WITHOUT ANY WARRANTY; without even the implied warranty of
-MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-GNU Affero General Public License for more details.
-
-You should have received a copy of the GNU Affero General Public License
-along with this program. If not, see <https://www.gnu.org/licenses/>.
-
-For commercial licensing, please contact support@quantumnous.com
-*/
 import { ChevronRight, Copy } from 'lucide-react'
 import { memo, type ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
@@ -35,8 +17,11 @@ import {
   formatPrice,
   formatRequestPrice,
   formatResolutionDisplayPrice,
+  formatVideoInputDisplayPrice,
   getResolutionPriceEntries,
+  getVideoInputPriceEntries,
   isResolutionPricingModel,
+  isVideoInputPricingModel,
 } from '../lib/price'
 import type { PricingModel, TokenUnit } from '../types'
 import { ModelBillingModeBadge } from './model-billing-mode-badge'
@@ -144,6 +129,29 @@ export const ModelCard = memo(function ModelCard(props: ModelCardProps) {
             {entry.resolution}{' '}
             <span className='text-foreground font-mono font-semibold'>
               {formatResolutionDisplayPrice(
+                props.model,
+                entry.price,
+                showRechargePrice,
+                priceRate,
+                usdExchangeRate,
+                props.selectedGroup
+              )}
+            </span>
+          </span>
+        ))}
+      </>
+    )
+  } else if (isVideoInputPricingModel(props.model)) {
+    priceSummary = (
+      <>
+        {getVideoInputPriceEntries(props.model).map((entry) => (
+          <span
+            key={entry.key}
+            className='text-muted-foreground whitespace-nowrap'
+          >
+            {t(entry.labelKey)}{' '}
+            <span className='text-foreground font-mono font-semibold'>
+              {formatVideoInputDisplayPrice(
                 props.model,
                 entry.price,
                 showRechargePrice,

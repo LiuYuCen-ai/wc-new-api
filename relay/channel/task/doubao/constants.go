@@ -75,12 +75,12 @@ func resolveVideoPriceModel(modelName string) string {
 	}
 }
 
-// GetVideoInputRatio 返回指定模型在给定输出分辨率/是否含视频输入下，相对基准价的计费倍率。
-// 第二个返回值表示该模型是否配置了价格表；倍率为 1.0 时调用方可忽略该 OtherRatio。
-func GetVideoInputRatio(modelName, resolution string, hasVideo bool) (float64, bool) {
+// officialVideoPrice 查询官方价格表（不含管理端覆盖配置）。
+// 返回该 (模型, 输出分辨率档, 是否含视频输入) 的刊例单价；
+// 模型不在价格表或该组合未配置时返回 false（调用方按基准价计费）。
+func officialVideoPrice(modelName, resolution string, hasVideo bool) (float64, bool) {
 	prices, ok := videoPriceTable[resolveVideoPriceModel(modelName)]
-	base := prices[videoPriceKey{}] // 零值键 = {480p/720p, 不含视频} 基准价
-	if !ok || base <= 0 {
+	if !ok {
 		return 0, false
 	}
 	canon := billing_setting.NormalizeResolution(resolution)
@@ -90,8 +90,80 @@ func GetVideoInputRatio(modelName, resolution string, hasVideo bool) (float64, b
 		hasVideo: hasVideo,
 	}]
 	if !ok {
-		// 未配置的组合（如 fast/mini/2.5 无 1080p/4k，上游会自行报错）按基准价计费即可。
+		return 0, false
+	}
+	return price, true
+}
+
+// officialBasePrice 返回官方价格表中该模型的基准价（480p/720p、无视频输入）。
+func officialBasePrice(modelName string) (float64, bool) {
+	prices, ok := videoPriceTable[resolveVideoPriceModel(modelName)]
+	if !ok {
+		return 0, false
+	}
+	base := prices[videoPriceKey{}]
+	if base <= 0 {
+		return 0, false
+	}
+	return base, true
+}
+
+// seedanceConfigPrices 返回管理端在 billing_setting.video_input_price 中
+// 配置的单价；优先精确匹配调用名，其次回退规范名。
+func seedanceConfigPrices(modelName string) (noVideo, video float64, ok bool) {
+	noVideo, video, ok = billing_setting.GetVideoInputPriceOverride(modelName)
+	if ok {
+		return
+	}
+	return billing_setting.GetVideoInputPriceOverride(resolveVideoPriceModel(modelName))
+}
+
+// GetVideoInputRatio 返回指定模型在给定输出分辨率/是否含视频输入下，相对基准价的计费倍率。
+// 管理端配置（billing_setting.video_input_price）优先，未配置的档位回退官方价格表：
+//   - no_video 替换官方基准档（480p/720p）无视频输入单价，其它分辨率档保持官方相对折扣；
+//   - video 替换官方基准档有视频输入单价，其它分辨率档同样保持官方相对折扣。
+//
+// 两个返回值表示该模型是否可按视频输入计费，倍率为 1.0 时调用方可忽略该 OtherRatio。
+func GetVideoInputRatio(modelName, resolution string, hasVideo bool) (float64, bool) {
+	base, hasBase := officialBasePrice(modelName)
+	noVideoCfg, videoCfg, hasCfg := seedanceConfigPrices(modelName)
+	if !hasBase && !hasCfg {
+		return 0, false
+	}
+
+	// 基准价：配置的无视频输入单价优先，其次官方基准价。
+	basePrice := base
+	if hasCfg && noVideoCfg > 0 {
+		basePrice = noVideoCfg
+	}
+	if basePrice <= 0 {
+		// 只配了有视频输入单价而没有可用的基准价，无法得出倍率，按基准价计费。
 		return 1.0, true
 	}
-	return price / base, true
+
+	price := basePrice
+	if hasVideo {
+		videoPrice := 0.0
+		if hasCfg && videoCfg > 0 {
+			videoPrice = videoCfg
+			// 分辨率档保持官方相对折扣（如 2.0 的 4K 16/28）。
+			if officialBase, ok := officialVideoPrice(modelName, billing_setting.DefaultResolution, true); ok && officialBase > 0 {
+				if officialRes, ok := officialVideoPrice(modelName, resolution, true); ok {
+					videoPrice = videoPrice * officialRes / officialBase
+				}
+			}
+		} else if p, ok := officialVideoPrice(modelName, resolution, true); ok {
+			videoPrice = p
+		} else {
+			// 官方未配置该组合（如 fast/mini/2.5 无 1080p/4k，上游会自行报错）按基准价计费。
+			videoPrice = basePrice
+		}
+		price = videoPrice
+	} else if hasBase {
+		// 无视频输入：按官方分辨率曲线缩放（配置只替换基准档）。
+		if p, ok := officialVideoPrice(modelName, resolution, false); ok {
+			price = basePrice * p / base
+		}
+	}
+	return price / basePrice, true
 }

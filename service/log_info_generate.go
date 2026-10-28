@@ -54,11 +54,10 @@ func appendRequestPath(ctx *gin.Context, relayInfo *relaycommon.RelayInfo, other
 	if other == nil {
 		return
 	}
-	if ctx != nil && ctx.Request != nil && ctx.Request.URL != nil {
-		if path := ctx.Request.URL.Path; path != "" {
-			other["request_path"] = path
-			return
-		}
+	// 优先记录客户端真实请求路径（适配中间件重写前的路径）。
+	if p := common.OriginalRequestPath(ctx); p != "" {
+		other["request_path"] = p
+		return
 	}
 	if relayInfo != nil && relayInfo.RequestURLPath != "" {
 		path := relayInfo.RequestURLPath

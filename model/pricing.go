@@ -36,7 +36,14 @@ type Pricing struct {
 	BillingMode            string                  `json:"billing_mode,omitempty"`
 	BillingExpr            string                  `json:"billing_expr,omitempty"`
 	ResolutionPrice        map[string]float64      `json:"resolution_price,omitempty"`
-	PricingVersion         string                  `json:"pricing_version,omitempty"`
+	ResolutionUnit         string                  `json:"resolution_unit,omitempty"`
+	// VideoInputPrice 视频输入计费两档单价（元/百万 token）：
+	// {no_video: 无视频输入, video: 有视频输入}；未配置的模型为 nil。
+	VideoInputPrice map[string]float64 `json:"video_input_price,omitempty"`
+	// VideoInputResolutions 逐分辨率「有视频输入单价」覆盖（元/百万 token），
+	// 仅按百万 token 分辨率计费的模型生效；未配置的模型为 nil。
+	VideoInputResolutions map[string]float64 `json:"video_input_resolutions,omitempty"`
+	PricingVersion        string             `json:"pricing_version,omitempty"`
 }
 
 type PricingVendor struct {
@@ -407,10 +414,29 @@ func updatePricing() {
 				pricing.BillingExpr = expr
 			}
 		} else if billingMode == billing_setting.BillingModeResolution {
-			if prices := billing_setting.GetResolutionPrices(model); len(prices) > 0 {
+			// 按秒与按 token 使用两张独立单价表：按秒读 resolution_price，
+			// 按 token 读 video_input_price.resolutions（无视频档作为 ResolutionPrice 下发，
+			// 有视频档通过 VideoInputResolutions 下发）。
+			if billing_setting.GetResolutionUnit(model) == billing_setting.ResolutionUnitMillionTokens {
+				if prices := billing_setting.GetResolutionTokenNoVideoPricesCopy(model); len(prices) > 0 {
+					pricing.BillingMode = billingMode
+					pricing.ResolutionPrice = prices
+					pricing.ResolutionUnit = billing_setting.ResolutionUnitMillionTokens
+				}
+			} else if prices := billing_setting.GetResolutionPrices(model); len(prices) > 0 {
 				pricing.BillingMode = billingMode
 				pricing.ResolutionPrice = prices
+				pricing.ResolutionUnit = billing_setting.GetResolutionUnit(model)
 			}
+		}
+		if noVideoPrice, videoPrice, ok := billing_setting.GetVideoInputPriceOverride(model); ok {
+			pricing.VideoInputPrice = map[string]float64{
+				billing_setting.VideoInputNoVideoKey: noVideoPrice,
+				billing_setting.VideoInputVideoKey:   videoPrice,
+			}
+		}
+		if resolutions := billing_setting.GetResolutionVideoPricesCopy(model); len(resolutions) > 0 {
+			pricing.VideoInputResolutions = resolutions
 		}
 		pricingMap = append(pricingMap, pricing)
 	}

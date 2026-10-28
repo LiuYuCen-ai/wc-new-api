@@ -1,21 +1,3 @@
-/*
-Copyright (C) 2023-2026 QuantumNous
-
-This program is free software: you can redistribute it and/or modify
-it under the terms of the GNU Affero General Public License as
-published by the Free Software Foundation, either version 3 of the
-License, or (at your option) any later version.
-
-This program is distributed in the hope that it will be useful,
-but WITHOUT ANY WARRANTY; without even the implied warranty of
-MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-GNU Affero General Public License for more details.
-
-You should have received a copy of the GNU Affero General Public License
-along with this program. If not, see <https://www.gnu.org/licenses/>.
-
-For commercial licensing, please contact support@quantumnous.com
-*/
 import type { ColumnDef } from '@tanstack/react-table'
 import { GitBranch, Sparkles, KeyRound } from 'lucide-react'
 import { useState } from 'react'
@@ -36,7 +18,7 @@ import {
   TooltipTrigger,
 } from '@/components/ui/tooltip'
 import { getUserAvatarFallback, getUserAvatarStyle } from '@/lib/avatar'
-import { formatBillingCurrencyFromUSD } from '@/lib/currency'
+import { formatPriceInDisplayCurrency } from '@/lib/currency'
 import { formatLogQuota, formatTimestampToDate } from '@/lib/format'
 import { cn } from '@/lib/utils'
 
@@ -56,6 +38,14 @@ import {
   getLogTypeConfig,
   isPerCallBilling,
 } from '../../lib/utils'
+import {
+  isResolutionBillingLog,
+  isResolutionTokenBilling,
+  resolveAppliedUnitPrice,
+  resolveResolutionVideoInputTier,
+  resolveBilledVideoTokens,
+} from '../../lib/resolution-billing'
+import { resolveVideoInputTier } from '../../lib/video-input-tier'
 import type { LogOtherData } from '../../types'
 import { DetailsDialog } from '../dialogs/details-dialog'
 import { LogCostDisplay } from '../log-cost-display'
@@ -67,6 +57,22 @@ interface DetailSegment {
   text: string
   muted?: boolean
   danger?: boolean
+}
+
+/**
+ * 本次计费命中的视频输入单价（原样，非美元换算值）：
+ * 有视频输入优先取 video 档，否则取无视频基准档；未配置时返回 null。
+ */
+function resolveAppliedVideoInputPrice(other: LogOtherData): number | null {
+  const prices = other.video_input_price
+  if (!prices) return null
+  const noVideo = prices.no_video ?? 0
+  const video = prices.video ?? 0
+  if (noVideo <= 0 && video <= 0) return null
+  const isVideoTier = resolveVideoInputTier(other) === 'video'
+  let applied = noVideo > 0 ? noVideo : video
+  if (isVideoTier && video > 0) applied = video
+  return applied > 0 ? applied : null
 }
 
 function formatRatioCompact(ratio: number | undefined): string {
@@ -151,10 +157,11 @@ function buildTypeDetailSegments(
   const segments: DetailSegment[] = []
 
   const priceOpts = { digitsLarge: 4, digitsSmall: 6, abbreviate: false }
+  // 单价跟随系统显示币种（USD→$ / CNY→¥），不做美元换算。
   const formatPrice = (price: number) =>
-    `${formatBillingCurrencyFromUSD(price, priceOpts)}/M`
+    `${formatPriceInDisplayCurrency(price, priceOpts)}/M`
   const formatPriceCompact = (price: number) =>
-    formatBillingCurrencyFromUSD(price, priceOpts)
+    formatPriceInDisplayCurrency(price, priceOpts)
   const formatPriceList = (prices: string[], showUnit: boolean) => {
     const text = prices.join(' / ')
     return showUnit ? `${text}/M` : text
@@ -213,20 +220,63 @@ function buildTypeDetailSegments(
         muted: true,
       })
     }
+  } else if (isResolutionBillingLog(other)) {
+    // 按分辨率计费（按秒 / 按 token）：`model_price` 是分辨率单价而非按次单价，
+    // 必须按实扣口径展示——按 token 还要区分「无视频 / 有视频」档位。
+    const applied = resolveAppliedUnitPrice(other)
+    const isTokenBilling = isResolutionTokenBilling(other)
+    const parts: string[] = []
+    if (applied != null) {
+      parts.push(
+        isTokenBilling
+          ? `${formatPriceCompact(applied)}/M`
+          : `${formatPriceCompact(applied)}/s`
+      )
+    }
+    if (other.resolution) {
+      parts.push(other.resolution)
+    }
+    const tier = resolveResolutionVideoInputTier(other)
+    if (tier) {
+      parts.push(tier === 'video' ? t('With video') : t('No video'))
+    }
+    segments.push({
+      text: [isTokenBilling ? t('By token') : t('By second'), ...parts].join(
+        ' · '
+      ),
+    })
+    // 差额结算行：与预扣行同为「按 token / 按秒」，需标出这是补扣还是退还，
+    // 否则两行看起来完全一样却金额不同（费用列只显示差额）。
+    if (other.pre_consumed_quota != null && other.actual_quota != null) {
+      if (other.actual_quota > other.pre_consumed_quota) {
+        segments.push({ text: t('Settlement top-up'), muted: true })
+      } else if (other.actual_quota < other.pre_consumed_quota) {
+        segments.push({ text: t('Settlement refund'), muted: true })
+      }
+    }
   } else {
     const modelPrice = other.model_price
     const isPerCall = isPerCallBilling(modelPrice)
     if (isPerCall && modelPrice != null) {
+      const perCallParts = [formatPriceCompact(modelPrice)]
+      if (other.resolution) {
+        perCallParts.push(other.resolution)
+      }
       segments.push({
-        text: `${t('Per-call')} · ${formatBillingCurrencyFromUSD(modelPrice, priceOpts)}`,
+        text: [t('Per-call'), ...perCallParts].join(' · '),
       })
     } else if (other.model_ratio != null) {
-      const inputPriceUSD = other.model_ratio * 2.0
+      // 配置了视频输入单价时直接显示本次命中的档位单价（原样，不再由 ratio 换算）。
+      const inputPriceUSD =
+        resolveAppliedVideoInputPrice(other) ?? other.model_ratio * 2.0
       const baseEntries = [formatPriceCompact(inputPriceUSD)]
       if (other.completion_ratio != null) {
         baseEntries.push(
           formatPriceCompact(inputPriceUSD * other.completion_ratio)
         )
+      }
+      if (other.resolution) {
+        baseEntries.push(other.resolution)
       }
       segments.push({
         text: `${t('Standard')} · ${formatPriceList(baseEntries, true)}`,
@@ -654,6 +704,24 @@ export function useCommonLogsColumns(isAdmin: boolean): ColumnDef<UsageLog>[] {
         const promptTokens = log.prompt_tokens || 0
         const completionTokens = log.completion_tokens || 0
         if (promptTokens === 0 && completionTokens === 0) {
+          // 视频按 token 计费的任务没有 prompt/completion token：
+          // 预扣行显示估算量（≈），结算行显示上游返回的真实 token 数。
+          const videoTokens = resolveBilledVideoTokens(other)
+          if (videoTokens) {
+            return (
+              <div className='flex flex-col gap-0.5'>
+                <span className='font-mono text-xs font-medium tabular-nums'>
+                  {videoTokens.estimated ? '≈' : ''}
+                  {videoTokens.tokens.toLocaleString()}
+                </span>
+                <span className='text-muted-foreground/60 text-[11px]'>
+                  {videoTokens.estimated
+                    ? t('Estimated video tokens')
+                    : t('Video tokens')}
+                </span>
+              </div>
+            )
+          }
           return <span className='text-muted-foreground text-xs'>-</span>
         }
 

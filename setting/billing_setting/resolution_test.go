@@ -20,6 +20,8 @@ func TestNormalizeResolution(t *testing.T) {
 		{raw: "720", want: "720P"},
 		{raw: "768p", want: "768P"},
 		{raw: "1080P", want: "1080P"},
+		{raw: "1K", want: "1K"},
+		{raw: "1k", want: "1K"},
 		{raw: "2K", want: "2K"},
 		{raw: "4k", want: "4K"},
 		{raw: "1920x1080", want: "1080P"},

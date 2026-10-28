@@ -14,6 +14,8 @@ import (
 
 func JimengRequestConvert() func(c *gin.Context) {
 	return func(c *gin.Context) {
+		// 记录客户端真实路径，日志展示用（路径随后会被重写为内部路径）。
+		common.SaveOriginalRequestPath(c)
 		action := c.Query("Action")
 		if action == "" {
 			abortWithOpenAiMessage(c, http.StatusBadRequest, "Action query parameter is required")

@@ -1,21 +1,3 @@
-/*
-Copyright (C) 2023-2026 QuantumNous
-
-This program is free software: you can redistribute it and/or modify
-it under the terms of the GNU Affero General Public License as
-published by the Free Software Foundation, either version 3 of the
-License, or (at your option) any later version.
-
-This program is distributed in the hope that it will be useful,
-but WITHOUT ANY WARRANTY; without even the implied warranty of
-MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-GNU Affero General Public License for more details.
-
-You should have received a copy of the GNU Affero General Public License
-along with this program. If not, see <https://www.gnu.org/licenses/>.
-
-For commercial licensing, please contact support@quantumnous.com
-*/
 import { useQuery } from '@tanstack/react-query'
 import { Code2, Eye, RotateCcw, Save } from 'lucide-react'
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react'
@@ -54,6 +36,8 @@ const PRICING_JSON_FIELD_MAP: Record<string, keyof ModelFormValues> = {
   'billing_setting.billing_mode': 'BillingMode',
   'billing_setting.billing_expr': 'BillingExpr',
   'billing_setting.resolution_price': 'ResolutionPrice',
+  'billing_setting.resolution_unit': 'ResolutionUnit',
+  'billing_setting.video_input_price': 'VideoInputPrice',
 }
 
 const PRICING_WATCH_FIELDS = [
@@ -68,6 +52,8 @@ const PRICING_WATCH_FIELDS = [
   'BillingMode',
   'BillingExpr',
   'ResolutionPrice',
+  'ResolutionUnit',
+  'VideoInputPrice',
   'ExposeRatioEnabled',
 ] as const satisfies ReadonlyArray<keyof ModelFormValues>
 
@@ -84,6 +70,8 @@ type ModelFormValues = {
   BillingMode: string
   BillingExpr: string
   ResolutionPrice: string
+  ResolutionUnit: string
+  VideoInputPrice: string
 }
 
 type ModelRatioFormProps = {
@@ -260,6 +248,8 @@ export const ModelRatioForm = memo(function ModelRatioForm({
     watchedBillingMode,
     watchedBillingExpr,
     watchedResolutionPrice,
+    watchedResolutionUnit,
+    watchedVideoInputPrice,
     watchedExposeRatioEnabled,
   ] = useWatch({
     control: form.control,
@@ -281,6 +271,8 @@ export const ModelRatioForm = memo(function ModelRatioForm({
       BillingMode: normalizeJsonString(watchedBillingMode ?? ''),
       BillingExpr: normalizeJsonString(watchedBillingExpr ?? ''),
       ResolutionPrice: normalizeJsonString(watchedResolutionPrice ?? ''),
+      ResolutionUnit: normalizeJsonString(watchedResolutionUnit ?? ''),
+      VideoInputPrice: normalizeJsonString(watchedVideoInputPrice ?? ''),
     }),
     [
       watchedAudioCompletionRatio,
@@ -294,6 +286,8 @@ export const ModelRatioForm = memo(function ModelRatioForm({
       watchedModelPrice,
       watchedModelRatio,
       watchedResolutionPrice,
+      watchedResolutionUnit,
+      watchedVideoInputPrice,
     ]
   )
 
@@ -313,6 +307,9 @@ export const ModelRatioForm = memo(function ModelRatioForm({
       normalizedDraftValues.BillingMode !== savedValues.BillingMode ||
       normalizedDraftValues.BillingExpr !== savedValues.BillingExpr ||
       normalizedDraftValues.ResolutionPrice !== savedValues.ResolutionPrice ||
+      normalizedDraftValues.ResolutionUnit !== savedValues.ResolutionUnit ||
+      normalizedDraftValues.VideoInputPrice !==
+        savedValues.VideoInputPrice ||
       watchedExposeRatioEnabled !== savedValues.ExposeRatioEnabled
     )
   }, [
@@ -339,39 +336,39 @@ export const ModelRatioForm = memo(function ModelRatioForm({
         <>
           <FormDirtyIndicator isDirty={isDirty} />
           <div className='flex flex-wrap justify-end gap-2'>
-          <Button
-            type='button'
-            variant='destructive'
-            size='sm'
-            onClick={onReset}
-            disabled={isResetting}
-          >
-            <RotateCcw data-icon='inline-start' />
-            {t('Reset prices')}
-          </Button>
-          <Button
-            type='button'
-            size='sm'
-            onClick={handleSave}
-            disabled={isSaving || !isDirty}
-          >
-            <Save data-icon='inline-start' />
-            {isSaving ? t('Saving...') : t('Save model prices')}
-          </Button>
-          <Button variant='outline' size='sm' onClick={toggleEditMode}>
-            {editMode === 'visual' ? (
-              <>
-                <Code2 className='mr-2 h-4 w-4' />
-                {t('Switch to JSON')}
-              </>
-            ) : (
-              <>
-                <Eye className='mr-2 h-4 w-4' />
-                {t('Switch to Visual')}
-              </>
-            )}
-          </Button>
-        </div>
+            <Button
+              type='button'
+              variant='destructive'
+              size='sm'
+              onClick={onReset}
+              disabled={isResetting}
+            >
+              <RotateCcw data-icon='inline-start' />
+              {t('Reset prices')}
+            </Button>
+            <Button
+              type='button'
+              size='sm'
+              onClick={handleSave}
+              disabled={isSaving || !isDirty}
+            >
+              <Save data-icon='inline-start' />
+              {isSaving ? t('Saving...') : t('Save model prices')}
+            </Button>
+            <Button variant='outline' size='sm' onClick={toggleEditMode}>
+              {editMode === 'visual' ? (
+                <>
+                  <Code2 className='mr-2 h-4 w-4' />
+                  {t('Switch to JSON')}
+                </>
+              ) : (
+                <>
+                  <Eye className='mr-2 h-4 w-4' />
+                  {t('Switch to Visual')}
+                </>
+              )}
+            </Button>
+          </div>
         </>
       )}
 
@@ -391,6 +388,8 @@ export const ModelRatioForm = memo(function ModelRatioForm({
               savedBillingMode={savedValues.BillingMode}
               savedBillingExpr={savedValues.BillingExpr}
               savedResolutionPrice={savedValues.ResolutionPrice}
+              savedResolutionUnit={savedValues.ResolutionUnit}
+              savedVideoInputPrice={savedValues.VideoInputPrice}
               modelPrice={watchedModelPrice ?? ''}
               modelRatio={watchedModelRatio ?? ''}
               cacheRatio={watchedCacheRatio ?? ''}
@@ -402,6 +401,8 @@ export const ModelRatioForm = memo(function ModelRatioForm({
               billingMode={watchedBillingMode ?? ''}
               billingExpr={watchedBillingExpr ?? ''}
               resolutionPrice={watchedResolutionPrice ?? ''}
+              resolutionUnit={watchedResolutionUnit ?? ''}
+              videoInputPrice={watchedVideoInputPrice ?? ''}
               candidateModelNames={
                 isUnsetVariant ? enabledModelsQuery.data?.data : undefined
               }
