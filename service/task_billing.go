@@ -18,6 +18,25 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
+// TaskSnapshotBilling 解析任务快照应记录的计费单位，并判定该任务是否属于
+// 「按次计费」（按次计费的任务在轮询到终态时不做差额结算）。
+//
+// 「是否按真实 token 多退少补」以 billing_unit 为准，因此不能直接采信
+// PriceData.BillingUnit：适配器自带 token 预扣的路径（seedance 等）在提交时
+// 会把它清空，若据此判定，按百万 token 计费的视频任务会被误标成按次计费，
+// 上游返回的 usage.completion_tokens 就永远不会参与结算。
+func TaskSnapshotBilling(originModelName string, usePrice bool, priceDataUnit string) (billingUnit string, perCallBilling bool) {
+	billingUnit = priceDataUnit
+	if billingUnit == "" &&
+		billing_setting.GetBillingMode(originModelName) == billing_setting.BillingModeResolution {
+		billingUnit = billing_setting.GetResolutionUnit(originModelName)
+	}
+	if common.StringsContains(constant.TaskPricePatches, originModelName) {
+		return billingUnit, true
+	}
+	return billingUnit, usePrice && billingUnit != billing_setting.ResolutionUnitMillionTokens
+}
+
 // LogTaskConsumption 记录任务消费日志和统计信息（仅记录，不涉及实际扣费）。
 // 实际扣费已由 BillingSession（PreConsumeBilling + SettleBilling）完成。
 func LogTaskConsumption(c *gin.Context, info *relaycommon.RelayInfo) {
@@ -380,6 +399,7 @@ func recalculateTaskQuota(ctx context.Context, task *model.Task, actualQuota int
 	}
 	preConsumedQuota := task.Quota
 	quotaDelta := actualQuota - preConsumedQuota
+	settleTokens := settleLogTokens(extra)
 
 	if quotaDelta == 0 {
 		logger.LogInfo(ctx, fmt.Sprintf("任务 %s 预扣费准确（%s，%s）",
@@ -420,6 +440,25 @@ func recalculateTaskQuota(ctx context.Context, task *model.Task, actualQuota int
 		logType = model.LogTypeRefund
 		logQuota = -quotaDelta
 	}
+	recordTaskSettlementLog(task, logType, logQuota, settleTokens, reason, extra, preConsumedQuota, actualQuota, clamps)
+}
+
+// settleLogTokens 取出本次结算使用的真实 token 数，写入日志的 prompt_tokens。
+func settleLogTokens(extra map[string]interface{}) int {
+	if extra == nil {
+		return 0
+	}
+	if v, ok := extra["actual_tokens"].(int); ok && v > 0 {
+		return v
+	}
+	return 0
+}
+
+// recordTaskSettlementLog 写一条任务结算日志（补扣 / 退款 / 无差额）。
+// 真实 token 写到 PromptTokens：日志详情的「输入 Token」与列表 Tokens 列都读该字段，
+// 视频任务没有 prompt token，用它承载上游返回的最终 token 数最直观。
+func recordTaskSettlementLog(task *model.Task, logType, logQuota, tokens int, reason string,
+	extra map[string]interface{}, preConsumedQuota, actualQuota int, clamps []*common.QuotaClamp) {
 	other := taskBillingOther(task)
 	other["task_id"] = task.TaskID
 	other["pre_consumed_quota"] = preConsumedQuota
@@ -431,16 +470,17 @@ func recalculateTaskQuota(ctx context.Context, task *model.Task, actualQuota int
 		attachQuotaSaturationToOther(other, clamp)
 	}
 	model.RecordTaskBillingLog(model.RecordTaskBillingLogParams{
-		UserId:    task.UserId,
-		LogType:   logType,
-		Content:   reason,
-		ChannelId: task.ChannelId,
-		ModelName: taskModelName(task),
-		Quota:     logQuota,
-		TokenId:   task.PrivateData.TokenId,
-		Group:     task.Group,
-		Other:     other,
-		NodeName:  task.PrivateData.NodeName,
+		UserId:       task.UserId,
+		LogType:      logType,
+		Content:      reason,
+		ChannelId:    task.ChannelId,
+		ModelName:    taskModelName(task),
+		Quota:        logQuota,
+		PromptTokens: tokens,
+		TokenId:      task.PrivateData.TokenId,
+		Group:        task.Group,
+		Other:        other,
+		NodeName:     task.PrivateData.NodeName,
 	})
 }
 
@@ -502,7 +542,9 @@ func RecalculateTaskQuotaByVideoTokens(ctx context.Context, task *model.Task, to
 	reason := fmt.Sprintf("token重算：tokens=%d, 实扣单价=$%g/1M, resolution=%s, groupRatio=%.2f, otherMultiplier=%.4f",
 		totalTokens, appliedUnitPrice, resolution, groupRatio, otherMultiplier)
 	// 把上游返回的真实 tokens 与实际计价单价写进日志，前端「Tokens / 单价」列才能显示实扣口径。
+	// actual_tokens 会落到日志 prompt_tokens（「输入 Token」列）。
 	recalculateTaskQuota(ctx, task, actualQuota, reason, map[string]interface{}{
+		"actual_tokens":       totalTokens,
 		"actual_video_tokens": totalTokens,
 		"applied_unit_price":  appliedUnitPrice,
 	}, clamp)
@@ -586,5 +628,7 @@ func RecalculateTaskQuotaByTokens(ctx context.Context, task *model.Task, totalTo
 	actualQuota, clamp := common.QuotaFromFloatChecked(float64(totalTokens) * modelRatio * finalGroupRatio * otherMultiplier)
 
 	reason := fmt.Sprintf("token重算：tokens=%d, modelRatio=%.2f, groupRatio=%.2f, otherMultiplier=%.4f", totalTokens, modelRatio, finalGroupRatio, otherMultiplier)
-	RecalculateTaskQuota(ctx, task, actualQuota, reason, clamp)
+	recalculateTaskQuota(ctx, task, actualQuota, reason, map[string]interface{}{
+		"actual_tokens": totalTokens,
+	}, clamp)
 }

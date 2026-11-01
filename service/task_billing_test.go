@@ -867,6 +867,12 @@ func TestSettle_ResolutionTokenBilling_ReconcilesWithReportedTokens(t *testing.T
 	assert.Equal(t, initQuota+(preConsumed-wantQuota), getUserQuota(t, userID))
 	assert.Equal(t, tokenRemain+(preConsumed-wantQuota), getTokenRemainQuota(t, tokenID))
 	assert.Equal(t, int64(1), countLogs(t))
+
+	// 最终 token 必须落到日志的 prompt_tokens（前端「输入 Token」列）。
+	var settleLog model.Log
+	require.NoError(t, model.LOG_DB.Order("id desc").First(&settleLog).Error)
+	assert.Equal(t, actualTokens, settleLog.PromptTokens)
+	assert.Equal(t, model.LogTypeRefund, settleLog.Type)
 }
 
 func TestSettle_ResolutionTokenBilling_KeepsEstimateWithoutUsage(t *testing.T) {
@@ -1042,4 +1048,112 @@ func TestRecalculateTaskQuotaByTokens_IgnoresPrechargeOtherRatio(t *testing.T) {
 	RecalculateTaskQuotaByTokens(ctx, task, totalTokens)
 
 	assert.Equal(t, wantQuota, task.Quota)
+}
+
+// ===========================================================================
+// 任务快照计费单位 / 「按次计费」判定
+// ===========================================================================
+
+// 决策分辨率计费的任务能否按真实 token 多退少补：seedance 等适配器自带 token
+// 预扣的路径会把 PriceData.BillingUnit 清空，不能据此判定为「按次计费」。
+func TestTaskSnapshotBilling(t *testing.T) {
+	saved := map[string]string{}
+	require.NoError(t, config.GlobalConfig.SaveToDB(func(key, value string) error {
+		saved[key] = value
+		return nil
+	}))
+	t.Cleanup(func() {
+		require.NoError(t, config.GlobalConfig.LoadFromDB(saved))
+	})
+	require.NoError(t, config.GlobalConfig.LoadFromDB(map[string]string{
+		"billing_setting.billing_mode":    `{"res-token-model":"resolution","res-second-model":"resolution"}`,
+		"billing_setting.resolution_unit": `{"res-token-model":"million_tokens"}`,
+	}))
+
+	// 按百万 token：BillingUnit 被适配器清空也要还原成 million_tokens，且不按次结算
+	unit, perCall := TaskSnapshotBilling("res-token-model", true, "")
+	assert.Equal(t, billing_setting.ResolutionUnitMillionTokens, unit)
+	assert.False(t, perCall)
+
+	// 按秒计费：仍按次结算，不做 token 差额结算
+	unit, perCall = TaskSnapshotBilling("res-second-model", true, "")
+	assert.Equal(t, billing_setting.ResolutionUnitSecond, unit)
+	assert.True(t, perCall)
+
+	// 固定价（按次）模型
+	unit, perCall = TaskSnapshotBilling("plain-price-model", true, "")
+	assert.Equal(t, "", unit)
+	assert.True(t, perCall)
+
+	// 由 ModelRatio 计价的模型（UsePrice=false）不能标成按次
+	_, perCall = TaskSnapshotBilling("plain-ratio-model", false, "")
+	assert.False(t, perCall)
+
+	// TASK_PRICE_PATCH 显式按次计费
+	savedPatches := constant.TaskPricePatches
+	constant.TaskPricePatches = []string{"res-token-model"}
+	t.Cleanup(func() { constant.TaskPricePatches = savedPatches })
+	_, perCall = TaskSnapshotBilling("res-token-model", true, "")
+	assert.True(t, perCall)
+}
+
+// 分辨率 + 按百万 token 的 seedance 任务：上游返回真实 usage 后必须多退少补。
+func TestSettle_SeedanceResolutionTokenBilling_ReconcilesWithReportedTokens(t *testing.T) {
+	truncate(t)
+	ctx := context.Background()
+
+	const modelName = "doubao-seedance-2-0-260128"
+	const unitPrice = 46.0    // 元 / 百万 token（720P 无视频输入）
+	const estTokens = 108000  // 5s 720P 16:9
+	const realTokens = 108900 // 上游 usage.completion_tokens
+
+	// 预扣：估算 token / 1M × 1.5 缓冲 × 单价
+	preConsumed := common.QuotaRound(unitPrice * (float64(estTokens) / 1e6 * utils.VideoTokenPrechargeBuffer) * common.QuotaPerUnit)
+	// 实际：真实 token × 单价
+	wantQuota := common.QuotaRound(unitPrice * float64(realTokens) / 1e6 * common.QuotaPerUnit)
+	require.NotEqual(t, preConsumed, wantQuota)
+
+	savedRatio := ratio_setting.ModelRatio2JSONString()
+	t.Cleanup(func() { require.NoError(t, ratio_setting.UpdateModelRatioByJSONString(savedRatio)) })
+	require.NoError(t, ratio_setting.UpdateModelRatioByJSONString(`{"doubao-seedance-2-0-260128": 3.15}`))
+
+	const userID, tokenID, channelID = 51, 51, 51
+	const initQuota, tokenRemain = 100000000, 100000000
+	seedUser(t, userID, initQuota)
+	seedToken(t, tokenID, userID, "sk-seedance-resolution", tokenRemain)
+	seedChannel(t, channelID)
+
+	task := makeTask(userID, channelID, preConsumed, tokenID, BillingSourceWallet, 0)
+	task.Properties.OriginModelName = modelName
+	task.PrivateData.BillingContext = &model.TaskBillingContext{
+		ModelPrice:      unitPrice,
+		GroupRatio:      1,
+		OriginModelName: modelName,
+		Resolution:      "720P",
+		BillingUnit:     billing_setting.ResolutionUnitMillionTokens,
+		OtherRatios: map[string]float64{
+			utils.ResolutionTokensRatioKey: float64(estTokens) / 1e6 * utils.VideoTokenPrechargeBuffer,
+		},
+	}
+
+	adaptor := &mockAdaptor{adjustReturn: 0}
+	taskResult := &relaycommon.TaskInfo{
+		Status:           model.TaskStatusSuccess,
+		TotalTokens:      realTokens,
+		CompletionTokens: realTokens,
+		TokensFromUsage:  true,
+	}
+
+	settleTaskBillingOnComplete(ctx, adaptor, task, taskResult)
+
+	assert.Equal(t, wantQuota, task.Quota)
+	assert.Equal(t, initQuota+(preConsumed-wantQuota), getUserQuota(t, userID))
+	assert.Equal(t, tokenRemain+(preConsumed-wantQuota), getTokenRemainQuota(t, tokenID))
+	assert.Equal(t, int64(1), countLogs(t))
+
+	// 上游最终 token 必须写进日志 prompt_tokens，日志页「输入 Token」才显示真实值。
+	var settleLog model.Log
+	require.NoError(t, model.LOG_DB.Order("id desc").First(&settleLog).Error)
+	assert.Equal(t, realTokens, settleLog.PromptTokens)
+	assert.Equal(t, model.LogTypeRefund, settleLog.Type)
 }

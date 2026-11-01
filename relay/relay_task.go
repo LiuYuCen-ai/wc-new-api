@@ -192,15 +192,22 @@ func RelayTaskSubmit(c *gin.Context, info *relaycommon.RelayInfo) (*TaskSubmitRe
 	//    ResolveOriginTask 可能已在 remix 路径中预设了 OtherRatios，此处合并。
 	//    resolution 模式下统一由 utils.ResolutionBillingRatios 归一化，
 	//    保证「按秒 / 按百万 token」对全部视频模型生效（即使适配器未实现估算）。
-	//    例外：seedance 等自带 token 预估（precharge）的适配器保留原有计费逻辑，
-	//    不套用前端配置的「按百万 token」分辨率单价。
+	//
+	//    seedance 等适配器给出的 precharge 倍率是按 ratio 模式的预扣基数
+	//    （modelRatio/2 × QuotaPerUnit）标定的，与分辨率模式的基数
+	//    （单价 × QuotaPerUnit）不是同一量纲：直接相乘会把预扣放大
+	//    (2 × 1e6 / QuotaPerUnit) 倍（默认 4 倍），因此这里丢弃 precharge，
+	//    改由 ResolutionBillingRatios 按计费单位生成 mega_tokens / seconds。
+	//    BillingUnit 必须原样保留：轮询结算据此判断该任务能否按上游真实 token
+	//    多退少补，清空后会被 controller 误判成「按次计费」而永久跳过结算。
 	estimatedRatios := adaptor.EstimateBilling(c, info)
 	if billing_setting.GetBillingMode(info.OriginModelName) == billing_setting.BillingModeResolution {
-		if utils.AdaptorOwnsTokenBilling(estimatedRatios) {
-			info.PriceData.BillingUnit = ""
-		} else {
-			estimatedRatios = utils.ResolutionBillingRatios(c, info.OriginModelName, estimatedRatios)
-		}
+		delete(estimatedRatios, constant.TaskOtherRatioPrecharge)
+		estimatedRatios = utils.ResolutionBillingRatios(c, info.OriginModelName, estimatedRatios)
+	} else if info.PriceData.UsePrice {
+		// 固定按次价：基数已经是「单价 × QuotaPerUnit」，再乘适配器的 token 预扣
+		// 倍率会按 token 数放大几十上百倍，这里直接丢弃（按次计费本身也不做结算）。
+		delete(estimatedRatios, constant.TaskOtherRatioPrecharge)
 	}
 	// 5.5 视频输入计费：管理端为模型配置了「无视频输入 / 有视频输入」单价时，
 	//     通用检测请求参数是否带视频并应用对应单价（seedance 等自带 token

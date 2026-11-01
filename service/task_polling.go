@@ -651,7 +651,7 @@ func truncateBase64(s string) string {
 func settleTaskBillingOnComplete(ctx context.Context, adaptor TaskPollingAdaptor, task *model.Task, taskResult *relaycommon.TaskInfo) {
 	// 0. 按次计费的任务不做差额结算
 	if bc := task.PrivateData.BillingContext; bc != nil && bc.PerCallBilling {
-		logger.LogInfo(ctx, fmt.Sprintf("任务 %s 按次计费，跳过差额结算", task.TaskID))
+		logger.LogInfo(ctx, fmt.Sprintf("任务 %s 按次计费，跳过差额结算（billing_unit=%q）", task.TaskID, bc.BillingUnit))
 		return
 	}
 	// 0.1 按百万 token 计费的视频模型：预扣用估算 token，完成后按上游 usage 结算
@@ -677,8 +677,8 @@ func settleTaskBillingOnComplete(ctx context.Context, adaptor TaskPollingAdaptor
 }
 
 // taskUsesResolutionTokenBilling 判断任务是否按「分辨率档位 + 百万 token」计费。
-// 以任务创建时快照的单位为准：seedance 等适配器自带 token 计费，提交时会把
-// BillingUnit 清空，这类任务继续走适配器/token 倍率结算。
+// 以任务创建时快照的计费单位为准：BillingUnit 只在真实按百万 token 计费时为
+// million_tokens，其余（按次、按秒、ratio 计费）都不走 token 结算。
 func taskUsesResolutionTokenBilling(task *model.Task) bool {
 	if task == nil {
 		return false

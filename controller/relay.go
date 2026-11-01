@@ -24,7 +24,6 @@ import (
 	"github.com/QuantumNous/new-api/relaykit/types"
 	"github.com/QuantumNous/new-api/service"
 	"github.com/QuantumNous/new-api/setting"
-	"github.com/QuantumNous/new-api/setting/billing_setting"
 	"github.com/QuantumNous/new-api/setting/operation_setting"
 	"github.com/QuantumNous/new-api/utils"
 
@@ -592,6 +591,11 @@ func RelayTask(c *gin.Context) {
 		task.PrivateData.SubscriptionId = relayInfo.SubscriptionId
 		task.PrivateData.TokenId = relayInfo.TokenId
 		task.PrivateData.NodeName = common.NodeName
+		billingUnit, perCallBilling := service.TaskSnapshotBilling(
+			relayInfo.OriginModelName,
+			relayInfo.PriceData.UsePrice,
+			relayInfo.PriceData.BillingUnit,
+		)
 		task.PrivateData.BillingContext = &model.TaskBillingContext{
 			ModelPrice:      relayInfo.PriceData.ModelPrice,
 			GroupRatio:      relayInfo.PriceData.GroupRatioInfo.GroupRatio,
@@ -599,14 +603,13 @@ func RelayTask(c *gin.Context) {
 			OtherRatios:     relayInfo.PriceData.OtherRatios(),
 			OriginModelName: relayInfo.OriginModelName,
 			Resolution:      relayInfo.PriceData.Resolution,
-			BillingUnit:     relayInfo.PriceData.BillingUnit,
+			BillingUnit:     billingUnit,
 			// 记下提交时命中的视频输入档位，结算/退款日志沿用同一档位展示单价，
 			// 否则「预扣按有视频价、结算按无视频价」会显示成两个价格。
 			VideoInputTier: videoInputTierOfRequest(c),
 			// 按百万 token 计费的视频模型需要在任务完成后按真实 token 多退少补，
 			// 因此不能标记为「按次计费」。
-			PerCallBilling: common.StringsContains(constant.TaskPricePatches, relayInfo.OriginModelName) ||
-				(relayInfo.PriceData.UsePrice && relayInfo.PriceData.BillingUnit != billing_setting.ResolutionUnitMillionTokens),
+			PerCallBilling: perCallBilling,
 		}
 		task.Quota = result.Quota
 		task.Data = result.TaskData

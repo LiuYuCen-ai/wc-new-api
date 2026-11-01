@@ -48,9 +48,10 @@ func ResolutionSeconds(req relaycommon.TaskSubmitReq, officialSeconds int) int {
 }
 
 // AdaptorOwnsTokenBilling reports whether the adaptor computed its own token
-// precharge (Seedance style). Such models keep the adaptor billing path and
-// must not be charged with the resolution "per 1M tokens" unit price configured
-// in the admin UI.
+// precharge (Seedance style, "precharge" ratio). It is only meaningful for
+// ratio-mode billing: in resolution mode the adaptor must not own the
+// multiplier, because its precharge is calibrated against a different base
+// (modelRatio/2 × QuotaPerUnit) than the resolution unit price (单价 × QuotaPerUnit).
 func AdaptorOwnsTokenBilling(adaptorRatios map[string]float64) bool {
 	_, ok := adaptorRatios[constant.TaskOtherRatioPrecharge]
 	return ok
@@ -106,15 +107,13 @@ func TaskPrechargeRatio(c *gin.Context, modelName string) float64 {
 //
 //   - unit=second          → {"seconds": n}
 //   - unit=million_tokens  → {"mega_tokens": n / 1M × VideoTokenPrechargeBuffer}
+//     （适配器已给出 mega_tokens 时直接沿用，保留其更精确的 token 估算）
 //
-// Non-time related adaptor ratios (for example "video_input") are preserved.
-// Ratios owned by the adaptor (see AdaptorOwnsTokenBilling) are returned
-// untouched.
+// Non-time related adaptor ratios (for example "video_input") are preserved;
+// the submit-only "precharge" ratio is dropped because it is calibrated against
+// the ratio-mode pre-charge base, not the resolution unit price.
 func ResolutionBillingRatios(c *gin.Context, modelName string, adaptorRatios map[string]float64) map[string]float64 {
 	if billing_setting.GetBillingMode(modelName) != billing_setting.BillingModeResolution {
-		return adaptorRatios
-	}
-	if AdaptorOwnsTokenBilling(adaptorRatios) {
 		return adaptorRatios
 	}
 
@@ -147,12 +146,18 @@ func ResolutionBillingRatios(c *gin.Context, modelName string, adaptorRatios map
 	}
 
 	if billing_setting.IsResolutionTokenBilling(modelName) {
-		ratios[ResolutionTokensRatioKey] = VideoTokensRatio(
-			relaycommon.TaskBillingResolution(req),
-			relaycommon.TaskBillingAspectRatio(req),
-			seconds,
-			VideoTokenPrechargeBuffer,
-		)
+		// 适配器若已按自己的 token 口径估算了 mega_tokens（例如 seedance 会把
+		// 视频输入时长也算进去），直接沿用；否则按官方公式兜底估算。
+		if adaptorTokens, ok := adaptorRatios[ResolutionTokensRatioKey]; ok && adaptorTokens > 0 {
+			ratios[ResolutionTokensRatioKey] = adaptorTokens
+		} else {
+			ratios[ResolutionTokensRatioKey] = VideoTokensRatio(
+				relaycommon.TaskBillingResolution(req),
+				relaycommon.TaskBillingAspectRatio(req),
+				seconds,
+				VideoTokenPrechargeBuffer,
+			)
+		}
 	} else {
 		ratios[ResolutionSecondsRatioKey] = float64(seconds)
 	}

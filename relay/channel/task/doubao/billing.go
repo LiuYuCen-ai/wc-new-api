@@ -8,6 +8,7 @@ import (
 	"github.com/QuantumNous/new-api/constant"
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
 	"github.com/QuantumNous/new-api/setting/billing_setting"
+	"github.com/QuantumNous/new-api/utils"
 )
 
 const (
@@ -105,6 +106,8 @@ func parseAspectRatio(ratio string) (w, h int) {
 
 // seedancePrechargeRatio 把 ModelPriceHelperPerCall 的预扣基数
 // (modelRatio/2 * QuotaPerUnit) 放大到「估算 token × 1.1 × modelRatio」。
+// 仅适用于由 ModelRatio 计价的模型；分辨率「按百万 token」模式的基数是
+// 「单价 × QuotaPerUnit」，那边改用 mega_tokens 倍率（见 EstimateBilling）。
 func seedancePrechargeRatio(estimatedTokens int) float64 {
 	if estimatedTokens <= 0 {
 		return 0
@@ -200,6 +203,14 @@ func seedanceEstimateBilling(req relaycommon.TaskSubmitReq, originModel, upstrea
 		videoInputSec = seedanceMaxVideoInputSeconds(modelName, countVideosInMetadata(req.Metadata))
 	}
 	tokens := estimateSeedanceTokens(outputSec, videoInputSec, resolution, aspect)
+	// 分辨率「按百万 token」计费时，预扣基数是「单价 × QuotaPerUnit」，
+	// 倍率口径就是「估算 token / 1M × 缓冲」；不能用 seedancePrechargeRatio
+	// （那个是按 ratio 模式基数 modelRatio/2 × QuotaPerUnit 标定的）。
+	// 计费配置按调用名（OriginModelName）维护，这里也用 originModel 判断。
+	if billing_setting.IsResolutionTokenBilling(originModel) {
+		ratios[utils.ResolutionTokensRatioKey] = float64(tokens) / billing_setting.VideoTokensPerMillion * utils.VideoTokenPrechargeBuffer
+		return ratios
+	}
 	if precharge := seedancePrechargeRatio(tokens); precharge > 0 {
 		ratios[constant.TaskOtherRatioPrecharge] = precharge
 	}

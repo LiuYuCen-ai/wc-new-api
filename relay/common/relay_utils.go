@@ -121,6 +121,14 @@ func storeTaskRequest(c *gin.Context, info *RelayInfo, action string, requestObj
 	info.Action = action
 	c.Set("task_request", requestObj)
 }
+
+// StoreTaskRequest 允许渠道适配器在校验后补齐请求快照。
+// 部分上游（如火山方舟 seedance）用 content 数组承载文本与素材，通用解析拿不到，
+// 适配器解析出原生字段后写回快照，计费估算与请求体构造读到的才是同一份数据。
+func StoreTaskRequest(c *gin.Context, req TaskSubmitReq) {
+	c.Set("task_request", req)
+}
+
 func GetTaskRequest(c *gin.Context) (TaskSubmitReq, error) {
 	v, exists := c.Get("task_request")
 	if !exists {

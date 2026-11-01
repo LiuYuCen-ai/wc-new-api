@@ -6,7 +6,7 @@ import (
 	"io"
 	"net/http"
 	"strconv"
-	"time"
+	"strings"
 
 	"github.com/QuantumNous/new-api/common"
 
@@ -119,7 +119,162 @@ func (a *TaskAdaptor) Init(info *relaycommon.RelayInfo) {
 // ValidateRequestAndSetAction parses body, validates fields and sets default action.
 func (a *TaskAdaptor) ValidateRequestAndSetAction(c *gin.Context, info *relaycommon.RelayInfo) (taskErr *taskdto.TaskError) {
 	// Accept only POST /v1/video/generations as "generate" action.
-	return relaycommon.ValidateBasicTaskRequest(c, info, constant.TaskActionGenerate, relaycommon.WithoutRequiredPrompt())
+	if taskErr = relaycommon.ValidateBasicTaskRequest(c, info, constant.TaskActionGenerate, relaycommon.WithoutRequiredPrompt()); taskErr != nil {
+		return taskErr
+	}
+	// 方舟原生协议把文本放在 content 数组里，通用解析会丢掉，这里补回快照。
+	if taskErr = normalizeSeedanceRequest(c); taskErr != nil {
+		return taskErr
+	}
+	return nil
+}
+
+// seedanceNativeFields 是方舟原生提交协议里不在通用 TaskSubmitReq 中的字段。
+// 客户端按官方格式提交（顶层 content / ratio / duration / watermark ...）时，
+// 这些字段必须搬进 metadata，否则 convertToRequestPayload 不会透传，
+// 计费估算也拿不到分辨率、比例和视频素材。
+var seedanceNativeFields = []string{
+	"content",
+	"ratio",
+	"aspect_ratio",
+	"resolution",
+	"duration",
+	"watermark",
+	"generate_audio",
+	"execution_expires_after",
+	"seed",
+	"camera_fixed",
+	"return_last_frame",
+	"draft",
+	"callback_url",
+	"service_tier",
+	"priority",
+	"frames",
+	"safety_identifier",
+	"tools",
+}
+
+// normalizeSeedanceRequest 把客户端按方舟原生协议提交的字段并入请求快照：
+//   - content 里的 text 段落回填到 prompt（否则上游报 "prompt is required"）；
+//   - content 及其它原生字段搬进 metadata，供请求体构造与计费估算使用。
+func normalizeSeedanceRequest(c *gin.Context) *taskdto.TaskError {
+	raw, err := readSeedanceRawBody(c)
+	if err != nil || len(raw) == 0 {
+		return nil
+	}
+	req, err := relaycommon.GetTaskRequest(c)
+	if err != nil {
+		return nil
+	}
+	if req.Metadata == nil {
+		req.Metadata = make(map[string]interface{}, len(seedanceNativeFields))
+	}
+	for _, field := range seedanceNativeFields {
+		value, ok := raw[field]
+		if !ok || value == nil {
+			continue
+		}
+		if _, exists := req.Metadata[field]; exists {
+			continue
+		}
+		req.Metadata[field] = value
+	}
+
+	if strings.TrimSpace(req.Prompt) == "" {
+		// 客户端给的是 content 数组时，prompt 就是里面的 text 段落。
+		req.Prompt = seedancePromptFromContent(raw["content"])
+	} else if _, exists := req.Metadata["content"]; !exists {
+		// 顶层给了 prompt、content 里没有文本，补一条让上游拿到完整指令。
+		req.Metadata["content"] = []interface{}{
+			map[string]interface{}{"type": "text", "text": req.Prompt},
+		}
+	}
+	if strings.TrimSpace(req.Prompt) == "" {
+		return service.TaskErrorWrapper(fmt.Errorf("prompt is required"), "invalid_request", http.StatusBadRequest)
+	}
+
+	// 原生字段同步回通用字段，时长/分辨率/比例参与校验与计费。
+	if req.Resolution == "" {
+		if v, ok := raw["resolution"].(string); ok {
+			req.Resolution = v
+		}
+	}
+	if req.Ratio == "" {
+		if v, ok := raw["ratio"].(string); ok {
+			req.Ratio = v
+		}
+	}
+	if req.Duration <= 0 && req.Seconds == "" {
+		if v, ok := raw["duration"]; ok {
+			req.Duration = int(metadataNumber(v))
+		}
+	}
+	relaycommon.StoreTaskRequest(c, req)
+	return nil
+}
+
+func readSeedanceRawBody(c *gin.Context) (map[string]interface{}, error) {
+	storage, err := common.GetRequestBody(c)
+	if err != nil {
+		return nil, err
+	}
+	reader, ok := storage.(io.ReadSeeker)
+	if !ok {
+		return nil, fmt.Errorf("request body is not readable")
+	}
+	if _, err := reader.Seek(0, io.SeekStart); err != nil {
+		return nil, err
+	}
+	data, err := io.ReadAll(reader)
+	if err != nil {
+		return nil, err
+	}
+	if len(data) == 0 {
+		return nil, nil
+	}
+	var body map[string]interface{}
+	if err := common.Unmarshal(data, &body); err != nil {
+		return nil, err
+	}
+	return body, nil
+}
+
+// seedancePromptFromContent 取出 content 数组里的文本段落（按出现顺序拼接）。
+func seedancePromptFromContent(content interface{}) string {
+	items, ok := content.([]interface{})
+	if !ok {
+		return ""
+	}
+	texts := make([]string, 0, len(items))
+	for _, item := range items {
+		itemMap, ok := item.(map[string]interface{})
+		if !ok {
+			continue
+		}
+		if itemType, _ := itemMap["type"].(string); itemType != "" && itemType != "text" {
+			continue
+		}
+		text, _ := itemMap["text"].(string)
+		if strings.TrimSpace(text) == "" {
+			continue
+		}
+		texts = append(texts, text)
+	}
+	return strings.Join(texts, "\n")
+}
+
+func metadataNumber(value interface{}) float64 {
+	switch v := value.(type) {
+	case float64:
+		return v
+	case int:
+		return float64(v)
+	case string:
+		if parsed, err := strconv.ParseFloat(strings.TrimSpace(v), 64); err == nil {
+			return parsed
+		}
+	}
+	return 0
 }
 
 // BuildRequestURL constructs the upstream URL.
@@ -135,8 +290,13 @@ func (a *TaskAdaptor) BuildRequestHeader(_ *gin.Context, req *http.Request, _ *r
 	return nil
 }
 
-// EstimateBilling 按官网口径估算 token，预扣 1.1 倍；含视频输入时叠加 video_input 单价倍率。
-// precharge 仅用于提交预扣，结算阶段按上游实际 token 多退少补时会忽略该键。
+// EstimateBilling 按官网口径估算 token。
+//   - ratio 计价（未配置分辨率单价）：返回 precharge，预扣 1.1 倍估算 token；
+//   - 分辨率「按百万 token」计价：返回 mega_tokens（估算 token / 1M × 缓冲），
+//     因为该模式的预扣基数是「单价 × QuotaPerUnit」，与 ratio 基数不同量纲。
+//
+// 两种情况都含视频输入时长，并叠加 video_input 单价倍率；
+// 结算阶段按上游实际 token 多退少补时会忽略 precharge / mega_tokens。
 func (a *TaskAdaptor) EstimateBilling(c *gin.Context, info *relaycommon.RelayInfo) map[string]float64 {
 	req, err := relaycommon.GetTaskRequest(c)
 	if err != nil {
@@ -229,13 +389,16 @@ func (a *TaskAdaptor) DoResponse(c *gin.Context, resp *http.Response, info *rela
 		return
 	}
 
-	ov := dto.NewOpenAIVideo()
-	ov.ID = info.PublicTaskID
-	ov.TaskID = info.PublicTaskID
-	ov.CreatedAt = time.Now().Unix()
-	ov.Model = info.OriginModelName
+	// 按上游原始格式返回（seedance 官方提交响应为 {"id": "cgt-..."}），
+	// 只把 id 换成对外的公有 task id，其余字段保持上游原样。
+	payload := make(map[string]interface{}, 4)
+	if err := common.Unmarshal(responseBody, &payload); err != nil {
+		taskErr = service.TaskErrorWrapper(errors.Wrapf(err, "body: %s", responseBody), "unmarshal_response_body_failed", http.StatusInternalServerError)
+		return
+	}
+	payload["id"] = info.PublicTaskID
 
-	c.JSON(http.StatusOK, ov)
+	c.JSON(http.StatusOK, payload)
 	return dResp.ID, responseBody, nil
 }
 
@@ -300,10 +463,11 @@ func (a *TaskAdaptor) convertToRequestPayload(req *relaycommon.TaskSubmitReq) (*
 	}
 
 	r.Content = lo.Reject(r.Content, func(c ContentItem, _ int) bool { return c.Type == "text" })
-	r.Content = append(r.Content, ContentItem{
+	// 文本放首位，与方舟官方示例一致；部分上游按 content[0] 取 prompt。
+	r.Content = append([]ContentItem{{
 		Type: "text",
 		Text: req.Prompt,
-	})
+	}}, r.Content...)
 
 	return &r, nil
 }
@@ -351,28 +515,48 @@ func (a *TaskAdaptor) ParseTaskResult(respBody []byte) (*relaycommon.TaskInfo, e
 	return &taskResult, nil
 }
 
+// ConvertToOpenAIVideo 查询接口也按上游原始格式返回：直接透出轮询时保存的上游
+// 报文（status / content.video_url / usage / error 都是上游自己的字段），
+// 只把 id 换成本地公开任务 ID，并补上 model 为客户请求的模型名。
+// 提交后尚未轮询到结果时上游报文只有 {"id": ...}，这里按本地状态兜底，
+// 避免客户端拿不到 status。
 func (a *TaskAdaptor) ConvertToOpenAIVideo(originTask *model.Task) ([]byte, error) {
-	var dResp responseTask
-	if err := common.Unmarshal(originTask.Data, &dResp); err != nil {
-		return nil, errors.Wrap(err, "unmarshal doubao task data failed")
-	}
-
-	openAIVideo := dto.NewOpenAIVideo()
-	openAIVideo.ID = originTask.TaskID
-	openAIVideo.TaskID = originTask.TaskID
-	openAIVideo.Status = originTask.Status.ToVideoStatus()
-	openAIVideo.SetProgressStr(originTask.Progress)
-	openAIVideo.SetMetadata("url", dResp.Content.VideoURL)
-	openAIVideo.CreatedAt = originTask.CreatedAt
-	openAIVideo.CompletedAt = originTask.UpdatedAt
-	openAIVideo.Model = originTask.Properties.OriginModelName
-
-	if dResp.Status == "failed" {
-		openAIVideo.Error = &dto.OpenAIVideoError{
-			Message: dResp.Error.Message,
-			Code:    dResp.Error.Code,
+	payload := make(map[string]interface{}, 8)
+	if len(originTask.Data) > 0 {
+		if err := common.Unmarshal(originTask.Data, &payload); err != nil {
+			return nil, errors.Wrap(err, "unmarshal doubao task data failed")
 		}
 	}
 
-	return common.Marshal(openAIVideo)
+	payload["id"] = originTask.TaskID
+	if modelName := originTask.Properties.OriginModelName; modelName != "" {
+		payload["model"] = modelName
+	}
+	if status, _ := payload["status"].(string); strings.TrimSpace(status) == "" {
+		payload["status"] = doubaoStatusOf(originTask.Status)
+	}
+	if originTask.Status == model.TaskStatusFailure {
+		if _, hasError := payload["error"]; !hasError && strings.TrimSpace(originTask.FailReason) != "" {
+			payload["error"] = map[string]interface{}{
+				"code":    "TaskFailed",
+				"message": originTask.FailReason,
+			}
+		}
+	}
+
+	return common.Marshal(payload)
+}
+
+// doubaoStatusOf 把本地状态映射回上游口径（queued / running / succeeded / failed）。
+func doubaoStatusOf(status model.TaskStatus) string {
+	switch status {
+	case model.TaskStatusSuccess:
+		return "succeeded"
+	case model.TaskStatusFailure:
+		return "failed"
+	case model.TaskStatusInProgress:
+		return "running"
+	default:
+		return "queued"
+	}
 }

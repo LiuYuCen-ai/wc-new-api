@@ -102,9 +102,9 @@ func TestResolutionBillingRatiosKeepsAdaptorMultipliers(t *testing.T) {
 	require.NotContains(t, ratios, ResolutionSecondsRatioKey)
 }
 
-// seedance 等自带 token 预估（precharge）的适配器保持原有计费逻辑：
-// 即使模型被配置为「分辨率 + 按百万 token」，也不套用前端单价。
-func TestResolutionBillingRatiosKeepsAdaptorOwnedTokenBilling(t *testing.T) {
+// 适配器自带的 precharge 是按 ratio 模式的预扣基数标定的，分辨率模式下必须丢弃，
+// 否则会把预扣放大 (2 × 1e6 / QuotaPerUnit) 倍；其余倍率（video_input）保留。
+func TestResolutionBillingRatiosDropsAdaptorPrecharge(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	loadBillingSetting(t, map[string]string{
 		"billing_setting.billing_mode":     `{"video-model":"resolution"}`,
@@ -115,14 +115,36 @@ func TestResolutionBillingRatiosKeepsAdaptorOwnedTokenBilling(t *testing.T) {
 	ctx, _ := gin.CreateTestContext(httptest.NewRecorder())
 	ctx.Set("task_request", relaycommon.TaskSubmitReq{Resolution: "720p", Duration: 5})
 
-	adaptorRatios := map[string]float64{
+	ratios := ResolutionBillingRatios(ctx, "video-model", map[string]float64{
 		"video_input":                    1.2,
 		constant.TaskOtherRatioPrecharge: 118.8,
-	}
+	})
 
-	require.True(t, AdaptorOwnsTokenBilling(adaptorRatios))
-	require.Equal(t, adaptorRatios, ResolutionBillingRatios(ctx, "video-model", adaptorRatios))
+	require.NotContains(t, ratios, constant.TaskOtherRatioPrecharge)
+	require.InDelta(t, 1.2, ratios["video_input"], 1e-9)
+	// 5s 720P → 108,000 tokens → 0.108 × 预扣缓冲
+	require.InDelta(t, 0.108*VideoTokenPrechargeBuffer, ratios[ResolutionTokensRatioKey], 1e-9)
 	require.False(t, AdaptorOwnsTokenBilling(map[string]float64{"seconds": 5}))
+}
+
+// 适配器若已按自身 token 口径（含视频输入时长）估算出 mega_tokens，直接沿用。
+func TestResolutionBillingRatiosKeepsAdaptorMegaTokens(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	loadBillingSetting(t, map[string]string{
+		"billing_setting.billing_mode":    `{"video-model":"resolution"}`,
+		"billing_setting.resolution_unit": `{"video-model":"million_tokens"}`,
+	})
+
+	ctx, _ := gin.CreateTestContext(httptest.NewRecorder())
+	ctx.Set("task_request", relaycommon.TaskSubmitReq{Resolution: "720p", Duration: 5})
+
+	ratios := ResolutionBillingRatios(ctx, "video-model", map[string]float64{
+		ResolutionTokensRatioKey: 0.648,
+		"video_input":            0.6,
+	})
+
+	require.InDelta(t, 0.648, ratios[ResolutionTokensRatioKey], 1e-9)
+	require.InDelta(t, 0.6, ratios["video_input"], 1e-9)
 }
 
 func TestResolutionBillingRatiosPassthroughForOtherBillingModes(t *testing.T) {
