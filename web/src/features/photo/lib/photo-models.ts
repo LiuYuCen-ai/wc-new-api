@@ -157,10 +157,15 @@ export function getVideoResolutionOptionsForModel(
   pricing?: Pick<PricingLookup, 'resolution_price'> | null
 ): PhotoSizeOption[] {
   const fromPrice = Object.keys(pricing?.resolution_price ?? {})
-    .map(normalizeResolutionKey)
+    .map((value) => normalizeResolutionKey(value).replace(/^(\d+)P$/i, '$1p'))
     .filter((value) => value !== 'custom')
-  if (fromPrice.length > 0) return uniqueSizeOptions(fromPrice)
-  return uniqueSizeOptions(['720P', '1080P'])
+  return uniqueSizeOptions(
+    fromPrice.length > 0 ? fromPrice : ['720p', '1080p']
+  ).map((item) => {
+    if (item.value === '720p') return { ...item, hint: sizeOptionHint('720P') }
+    if (item.value === '1080p') return { ...item, hint: sizeOptionHint('1080P') }
+    return item
+  })
 }
 
 function defaultPhotoSize(options: PhotoSizeOption[]): string {

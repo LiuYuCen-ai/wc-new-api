@@ -59,7 +59,7 @@ const DEFAULT_PARAMS: VideoParams = {
   prompt: '',
   duration: '',
   aspectRatio: '16:9',
-  resolution: '720P',
+  resolution: '720p',
 }
 
 const MAX_VIDEO_DURATION = 15
@@ -252,7 +252,10 @@ export function VideoPanel() {
 
   useEffect(() => {
     if (!params.model) return
-    const next = snapPhotoSize(params.resolution, resolutionOptions)
+    const matched = resolutionOptions.find(
+      (item) => item.value.toLowerCase() === params.resolution.trim().toLowerCase()
+    )
+    const next = matched?.value ?? snapPhotoSize(params.resolution, resolutionOptions)
     if (next === params.resolution) return
     update('resolution', next)
   }, [params.model, params.resolution, resolutionOptions])

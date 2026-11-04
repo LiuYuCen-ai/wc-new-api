@@ -136,13 +136,20 @@ describe('getPhotoSizeOptionsForModel', () => {
 })
 
 describe('getVideoResolutionOptionsForModel', () => {
-  test('uses billed resolutions and omits custom', () => {
+  test('uses lowercase p for billed resolutions and omits custom', () => {
     const options = getVideoResolutionOptionsForModel('MiniMax-H3', {
-      resolution_price: { '720p': 0.01, '1080p': 0.02, '4k': 0.08 },
+      resolution_price: {
+        '480P': 0.005,
+        '720p': 0.01,
+        '720P': 0.01,
+        '1080P': 0.02,
+        '4k': 0.08,
+        custom: 0.1,
+      },
     })
     assert.deepEqual(
       options.map((item) => item.value),
-      ['720P', '1080P', '4K']
+      ['480p', '720p', '1080p', '4K']
     )
   })
 })
