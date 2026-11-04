@@ -135,6 +135,58 @@ func TestNormalizeSeedanceRequestAddsPromptAsTextItem(t *testing.T) {
 	assert.Equal(t, "image_url", imageItem["type"])
 }
 
+func TestSeedanceUpstreamResolution(t *testing.T) {
+	for _, path := range []string{"playground", "generic_top_level", "generic_metadata", "native"} {
+		for _, resolution := range []string{"480P", "720P", "1080P", "4K", "480p", "720p", "1080p", "4k", " 720P ", ""} {
+			t.Run(path+"/"+resolution, func(t *testing.T) {
+				body := map[string]interface{}{
+					"model":    "doubao-seedance-2-0",
+					"prompt":   "海浪拍岸",
+					"duration": 4,
+				}
+				if path == "native" {
+					delete(body, "prompt")
+					body["content"] = []interface{}{map[string]interface{}{"type": "text", "text": "海浪拍岸"}}
+				}
+				if resolution != "" {
+					if path != "generic_metadata" {
+						body["resolution"] = resolution
+					}
+					if path == "playground" || path == "generic_metadata" {
+						body["metadata"] = map[string]interface{}{"resolution": resolution}
+					}
+				}
+				data, err := common.Marshal(body)
+				require.NoError(t, err)
+				c := newSeedanceNativeContext(t, string(data))
+				info := &relaycommon.RelayInfo{ChannelMeta: &relaycommon.ChannelMeta{}, TaskRelayInfo: &relaycommon.TaskRelayInfo{}}
+				adaptor := &TaskAdaptor{}
+				require.Nil(t, adaptor.ValidateRequestAndSetAction(c, info))
+				before, err := relaycommon.GetTaskRequest(c)
+				require.NoError(t, err)
+				snapshot, err := common.Marshal(before)
+				require.NoError(t, err)
+
+				reader, err := adaptor.BuildRequestBody(c, info)
+				require.NoError(t, err)
+				var payload map[string]interface{}
+				require.NoError(t, common.DecodeJson(reader, &payload))
+				if resolution == "" {
+					assert.NotContains(t, payload, "resolution")
+				} else {
+					assert.Equal(t, strings.ToLower(strings.TrimSpace(resolution)), payload["resolution"])
+					assert.Equal(t, strings.ToUpper(strings.TrimSpace(resolution)), relaycommon.TaskBillingResolution(before))
+				}
+				after, err := relaycommon.GetTaskRequest(c)
+				require.NoError(t, err)
+				afterSnapshot, err := common.Marshal(after)
+				require.NoError(t, err)
+				assert.JSONEq(t, string(snapshot), string(afterSnapshot), "upstream formatting must not change the billing request snapshot")
+			})
+		}
+	}
+}
+
 // 既没有 prompt 也没有 text 段落时，本地直接报错，不要让上游建一个必然失败的任务。
 func TestNormalizeSeedanceRequestRejectsMissingPrompt(t *testing.T) {
 	body := `{"model":"doubao-seedance-2-0","content":[{"type":"image_url","image_url":{"url":"https://example.com/a.png"}}]}`
